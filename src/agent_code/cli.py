@@ -5,6 +5,9 @@ from rich.console import Console
 
 from agent_code import __version__
 from agent_code.agent import Agent
+from agent_code.config import ConfigurationError, load_anthropic_config
+from agent_code.providers.anthropic import AnthropicProvider
+from agent_code.providers.base import Provider
 from agent_code.providers.demo import DemoProvider
 from agent_code.tools.echo import EchoTool
 
@@ -17,11 +20,46 @@ app = typer.Typer(
 console = Console()
 
 
-def create_demo_agent() -> Agent:
-    """创建用于本地演示的 Agent。"""
-    return Agent(
-        provider=DemoProvider(),
-        tools=[EchoTool()],
+def create_agent(
+    provider_name: str,
+    api_key: str | None = None,
+    model: str | None = None,
+    base_url: str | None = None,
+) -> Agent:
+    """根据 Provider 名称创建 Agent。"""
+    provider = create_provider(
+        provider_name=provider_name,
+        api_key=api_key,
+        model=model,
+        base_url=base_url,
+    )
+    return Agent(provider=provider, tools=[EchoTool()])
+
+
+def create_provider(
+    provider_name: str,
+    api_key: str | None = None,
+    model: str | None = None,
+    base_url: str | None = None,
+) -> Provider:
+    """创建本地演示或真实 Anthropic-compatible Provider。"""
+    if provider_name == "demo":
+        return DemoProvider()
+
+    if provider_name == "anthropic":
+        config = load_anthropic_config(
+            api_key=api_key,
+            model=model,
+            base_url=base_url,
+        )
+        return AnthropicProvider(
+            api_key=config.api_key,
+            model=config.model,
+            base_url=config.base_url,
+        )
+
+    raise ConfigurationError(
+        "不支持的 Provider。可选值为 demo 或 anthropic。"
     )
 
 
@@ -41,16 +79,57 @@ def version() -> None:
 @app.command()
 def run(
     prompt: str = typer.Argument(..., help="交给 Agent 处理的一次性提示词。"),
+    provider: str = typer.Option(
+        "demo",
+        "--provider",
+        help="使用 demo 或 anthropic Provider。",
+    ),
+    model: str | None = typer.Option(
+        None,
+        "--model",
+        help="覆盖 AGENT_CODE_MODEL 环境变量。",
+    ),
+    base_url: str | None = typer.Option(
+        None,
+        "--base-url",
+        help="覆盖 ANTHROPIC_BASE_URL 环境变量。",
+    ),
 ) -> None:
-    """执行一次本地演示 Agent。"""
-    result = create_demo_agent().run(prompt)
+    """执行一次 Agent。"""
+    agent = _create_agent_or_exit(
+        provider_name=provider,
+        model=model,
+        base_url=base_url,
+    )
+    result = agent.run(prompt)
     console.print(result.text)
 
 
 @app.command()
-def repl() -> None:
-    """进入本地演示 Agent 的交互式终端。"""
-    console.print("已进入演示模式。输入 /exit 或 /quit 退出。")
+def repl(
+    provider: str = typer.Option(
+        "demo",
+        "--provider",
+        help="使用 demo 或 anthropic Provider。",
+    ),
+    model: str | None = typer.Option(
+        None,
+        "--model",
+        help="覆盖 AGENT_CODE_MODEL 环境变量。",
+    ),
+    base_url: str | None = typer.Option(
+        None,
+        "--base-url",
+        help="覆盖 ANTHROPIC_BASE_URL 环境变量。",
+    ),
+) -> None:
+    """进入交互式 Agent 终端。"""
+    agent = _create_agent_or_exit(
+        provider_name=provider,
+        model=model,
+        base_url=base_url,
+    )
+    console.print("已进入交互模式。输入 /exit 或 /quit 退出。")
 
     while True:
         try:
@@ -69,8 +148,25 @@ def repl() -> None:
         if not prompt:
             continue
 
-        result = create_demo_agent().run(prompt)
+        result = agent.run(prompt)
         console.print(f"agent> {result.text}")
+
+
+def _create_agent_or_exit(
+    provider_name: str,
+    model: str | None,
+    base_url: str | None,
+) -> Agent:
+    """将配置错误转换为明确的 CLI 错误。"""
+    try:
+        return create_agent(
+            provider_name=provider_name,
+            model=model,
+            base_url=base_url,
+        )
+    except ConfigurationError as error:
+        console.print(f"[red]配置错误：{error}[/red]")
+        raise typer.Exit(code=2) from error
 
 
 def main() -> None:

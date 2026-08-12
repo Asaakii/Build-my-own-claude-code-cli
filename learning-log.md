@@ -32,3 +32,11 @@
 - 保留 MockProvider 与 DemoProvider，测试时使用假客户端，不发起真实网络请求或读取真实密钥。
 - 验证结果：Python 3.12.13 环境下共 16 项测试通过；Ruff 自动修正 import 排序后复查通过。
 - 关键理解：真实模型接入的关键不只是发送提示词，还要严格保持“assistant 发出 tool_use，user 回传 tool_result”的消息顺序；协议转换集中在 Provider，Agent Loop 不应感知具体 SDK。
+
+### 阶段 1.2：Provider 配置与安全选择
+
+- 实现 Anthropic 配置加载，支持从命令行选项或环境变量读取模型名、Base URL 与凭据；命令行选项优先。
+- 为 `run` 与 `repl` 添加 `--provider`、`--model`、`--base-url`；默认仍使用本地 demo，不会意外调用真实模型。
+- 未选择受支持 Provider，或选择真实 Provider 但缺少配置时，命令行给出明确错误并以状态码 2 退出。
+- 验证结果：Python 3.12.13 环境下共 21 项测试通过；`ruff check .` 通过；默认 demo 正常运行，未配置真实 Provider 时未联网并提示缺少 `ANTHROPIC_API_KEY` 和 `AGENT_CODE_MODEL`。
+- 关键理解：真实 Provider 必须是显式选择；配置校验应发生在网络调用之前，并且错误信息只指出缺失配置名称，绝不输出密钥内容。

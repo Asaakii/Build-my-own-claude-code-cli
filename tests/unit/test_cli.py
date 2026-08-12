@@ -28,7 +28,7 @@ def test_version_displays_current_version() -> None:
 
 
 def test_run_executes_demo_agent() -> None:
-    """run 命令应完成一次本地 Agent Loop。"""
+    """run 默认使用本地 DemoProvider。"""
     result = runner.invoke(app, ["run", "你好"])
 
     assert result.exit_code == 0
@@ -42,3 +42,33 @@ def test_repl_accepts_prompt_and_exit_command() -> None:
     assert result.exit_code == 0
     assert "演示完成：你好" in result.output
     assert "已退出 REPL。" in result.output
+
+
+def test_anthropic_provider_requires_configuration(
+    monkeypatch,
+) -> None:
+    """未配置真实 Provider 时，不应联网且应说明缺失项。"""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    monkeypatch.delenv("AGENT_CODE_MODEL", raising=False)
+
+    result = runner.invoke(
+        app,
+        ["run", "你好", "--provider", "anthropic"],
+    )
+
+    assert result.exit_code == 2
+    assert "配置错误" in result.output
+    assert "ANTHROPIC_API_KEY" in result.output
+    assert "AGENT_CODE_MODEL" in result.output
+
+
+def test_unknown_provider_is_rejected() -> None:
+    """不支持的 Provider 名称应被明确拒绝。"""
+    result = runner.invoke(
+        app,
+        ["run", "你好", "--provider", "unknown"],
+    )
+
+    assert result.exit_code == 2
+    assert "demo 或 anthropic" in result.output
