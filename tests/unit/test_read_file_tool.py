@@ -20,6 +20,7 @@ def test_read_file_reads_workspace_text_with_line_numbers(tmp_path) -> None:
     )
 
     assert "文件：notes.txt" in result
+    assert "内容 SHA-256：" in result
     assert "   2: 第二行" in result
     assert "   3: 第三行" in result
     assert "第一行" not in result

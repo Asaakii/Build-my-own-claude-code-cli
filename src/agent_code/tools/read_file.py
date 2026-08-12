@@ -1,5 +1,6 @@
 """受限工作区内的只读文本文件工具。"""
 
+import hashlib
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -103,6 +104,7 @@ class ReadFileTool:
                 f"拒绝读取非 UTF-8 文本文件：{display_path}。"
             ) from error
 
+        content_sha256 = hashlib.sha256(raw_content).hexdigest()
         start_line = self._read_line_number(arguments, "start_line", default=1)
         end_line = self._read_line_number(arguments, "end_line", default=None)
 
@@ -112,7 +114,11 @@ class ReadFileTool:
         lines = text.splitlines()
 
         if not lines:
-            return f"文件：{display_path}\n文件为空。"
+            return (
+                f"文件：{display_path}\n"
+                f"内容 SHA-256：{content_sha256}\n"
+                "文件为空。"
+            )
 
         if start_line > len(lines):
             raise ValueError(
@@ -124,6 +130,7 @@ class ReadFileTool:
 
         return self._render(
             display_path=display_path,
+            content_sha256=content_sha256,
             lines=selected_lines,
             start_line=start_line,
         )
@@ -147,6 +154,7 @@ class ReadFileTool:
     def _render(
         self,
         display_path: str,
+        content_sha256: str,
         lines: list[str],
         start_line: int,
     ) -> str:
@@ -171,6 +179,7 @@ class ReadFileTool:
         last_rendered_line = start_line + len(rendered_lines) - 1
         result = [
             f"文件：{display_path}",
+            f"内容 SHA-256：{content_sha256}",
             f"显示行：{start_line}-{last_rendered_line}",
             "---",
             *rendered_lines,
