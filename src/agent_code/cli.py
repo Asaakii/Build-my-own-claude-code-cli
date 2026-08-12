@@ -8,6 +8,7 @@ from rich.console import Console
 from agent_code import __version__
 from agent_code.agent import Agent, AgentResult
 from agent_code.config import ConfigurationError, load_anthropic_config
+from agent_code.edits import PendingEditStore, apply_pending_edit
 from agent_code.providers.anthropic import AnthropicProvider
 from agent_code.providers.base import Provider, ProviderError
 from agent_code.providers.demo import DemoProvider
@@ -32,6 +33,7 @@ def create_agent(
     api_key: str | None = None,
     model: str | None = None,
     base_url: str | None = None,
+    pending_edits: PendingEditStore | None = None,
 ) -> Agent:
     """根据 Provider 名称创建 Agent。"""
     provider = create_provider(
@@ -40,6 +42,7 @@ def create_agent(
         model=model,
         base_url=base_url,
     )
+    pending_edits = pending_edits or PendingEditStore()
     return Agent(
         provider=provider,
         tools=[
@@ -48,7 +51,10 @@ def create_agent(
             ListDirectoryTool(workspace_root=Path.cwd()),
             GlobTool(workspace_root=Path.cwd()),
             SearchTextTool(workspace_root=Path.cwd()),
-            PreviewReplaceTool(workspace_root=Path.cwd()),
+            PreviewReplaceTool(
+                workspace_root=Path.cwd(),
+                pending_edits=pending_edits,
+            ),
         ],
     )
 
@@ -154,12 +160,16 @@ def repl(
     ),
 ) -> None:
     """进入交互式 Agent 终端。"""
+    pending_edits = PendingEditStore()
     agent = _create_agent_or_exit(
         provider_name=provider,
         model=model,
         base_url=base_url,
+        pending_edits=pending_edits,
     )
-    console.print("已进入交互模式。输入 /exit 或 /quit 退出。")
+    console.print(
+        "已进入交互模式。输入 /exit、/quit 或 /approve <确认 ID>。"
+    )
 
     while True:
         try:
@@ -174,6 +184,28 @@ def repl(
         if prompt in {"/exit", "/quit"}:
             console.print("已退出 REPL。")
             break
+
+        if prompt.startswith("/approve"):
+            command_parts = prompt.split()
+
+            if len(command_parts) != 2:
+                console.print(
+                    "[red]用法：/approve <确认 ID>[/red]"
+                )
+                continue
+
+            try:
+                result = apply_pending_edit(
+                    pending_edits,
+                    workspace_root=Path.cwd(),
+                    approval_id=command_parts[1],
+                )
+            except (RuntimeError, ValueError) as error:
+                console.print(f"[red]写入失败：{error}[/red]")
+            else:
+                console.print(result)
+
+            continue
 
         if not prompt:
             continue
@@ -191,6 +223,7 @@ def _create_agent_or_exit(
     provider_name: str,
     model: str | None,
     base_url: str | None,
+    pending_edits: PendingEditStore | None = None,
 ) -> Agent:
     """将配置错误转换为明确的 CLI 错误。"""
     try:
@@ -198,6 +231,7 @@ def _create_agent_or_exit(
             provider_name=provider_name,
             model=model,
             base_url=base_url,
+            pending_edits=pending_edits,
         )
     except ConfigurationError as error:
         console.print(f"[red]配置错误：{error}[/red]")

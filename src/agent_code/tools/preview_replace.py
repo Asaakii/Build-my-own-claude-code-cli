@@ -6,6 +6,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from agent_code.edits import PendingEditStore
+
 
 class PreviewReplaceTool:
     """预览工作区文本文件中的一次精确替换，不写入文件。"""
@@ -50,13 +52,18 @@ class PreviewReplaceTool:
     max_replacement_text_chars = 8_000
     max_preview_chars = 12_000
 
-    def __init__(self, workspace_root: Path | str) -> None:
+    def __init__(
+        self,
+        workspace_root: Path | str,
+        pending_edits: PendingEditStore | None = None,
+    ) -> None:
         root = Path(workspace_root).resolve()
 
         if not root.is_dir():
             raise ValueError("工作区根目录必须是存在的目录。")
 
         self._root = root
+        self._pending_edits = pending_edits or PendingEditStore()
 
     def run(self, arguments: Mapping[str, Any]) -> str:
         """生成精确替换的统一 diff，不写入任何文件。"""
@@ -116,6 +123,12 @@ class PreviewReplaceTool:
         updated_sha256 = hashlib.sha256(
             updated_text.encode("utf-8")
         ).hexdigest()
+        approval_id = self._pending_edits.create(
+            path=display_path,
+            expected_sha256=current_sha256,
+            old_text=old_text,
+            new_text=new_text,
+        )
 
         return "\n".join(
             [
@@ -123,7 +136,8 @@ class PreviewReplaceTool:
                 f"当前内容 SHA-256：{current_sha256}",
                 f"替换后内容 SHA-256：{updated_sha256}",
                 "替换次数：1",
-                "写入状态：未写入，等待后续明确确认。",
+                f"待确认 ID：{approval_id}",
+                "写入状态：未写入。请在 REPL 中输入 /approve <ID> 执行写入。",
                 "---",
                 diff.rstrip("\n"),
             ]

@@ -1,4 +1,4 @@
-"""用于验证 Agent Loop 的最小 echo 工具。"""
+"""用于验证 Agent Loop 的示例 echo 工具。"""
 
 from collections.abc import Mapping
 from typing import Any

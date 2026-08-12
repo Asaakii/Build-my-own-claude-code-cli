@@ -105,3 +105,11 @@ def test_status_does_not_display_secret_values(
     assert "secret-value-must-not-appear" not in result.output
     assert "private-model-name" not in result.output
     assert "https://private.example.com" not in result.output
+
+
+def test_repl_rejects_approve_command_without_identifier() -> None:
+    """REPL 应拒绝没有确认 ID 的写入命令。"""
+    result = runner.invoke(app, ["repl"], input="/approve\n/exit\n")
+
+    assert result.exit_code == 0
+    assert "用法：/approve <确认 ID>" in result.output
