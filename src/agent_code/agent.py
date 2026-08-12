@@ -37,7 +37,10 @@ class Agent:
         messages = [Message(role="user", content=prompt)]
 
         for _ in range(self._max_turns):
-            response = self._provider.respond(messages)
+            response = self._provider.respond(
+                messages,
+                tools=tuple(self._tools.values()),
+            )
             messages.append(
                 Message(
                     role="assistant",

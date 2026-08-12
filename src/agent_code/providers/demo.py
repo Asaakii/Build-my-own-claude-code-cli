@@ -3,12 +3,17 @@
 from collections.abc import Sequence
 
 from agent_code.models import Message, ModelResponse, ToolCall
+from agent_code.tools.base import Tool
 
 
 class DemoProvider:
     """用固定规则模拟一次工具调用后的模型响应。"""
 
-    def respond(self, messages: Sequence[Message]) -> ModelResponse:
+    def respond(
+        self,
+        messages: Sequence[Message],
+        tools: Sequence[Tool] = (),
+    ) -> ModelResponse:
         """根据最后一条消息决定请求工具或返回最终文本。"""
         latest_message = messages[-1]
 

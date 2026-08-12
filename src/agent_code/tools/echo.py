@@ -9,6 +9,17 @@ class EchoTool:
 
     name = "echo"
     description = "原样返回 text 参数，用于测试工具调用流程。"
+    input_schema = {
+        "type": "object",
+        "properties": {
+            "text": {
+                "type": "string",
+                "description": "需要原样返回的文本。",
+            }
+        },
+        "required": ["text"],
+        "additionalProperties": False,
+    }
 
     def run(self, arguments: Mapping[str, Any]) -> str:
         """读取并返回 text 参数。"""

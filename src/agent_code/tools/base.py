@@ -9,6 +9,7 @@ class Tool(Protocol):
 
     name: str
     description: str
+    input_schema: dict[str, Any]
 
     def run(self, arguments: Mapping[str, Any]) -> str:
         """执行工具并返回可追加到消息历史的文本结果。"""

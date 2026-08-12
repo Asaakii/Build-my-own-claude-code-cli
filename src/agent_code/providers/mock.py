@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from agent_code.models import Message, ModelResponse
+from agent_code.tools.base import Tool
 
 
 @dataclass
@@ -13,7 +14,11 @@ class MockProvider:
     responses: list[ModelResponse]
     requests: list[tuple[Message, ...]] = field(default_factory=list, init=False)
 
-    def respond(self, messages: Sequence[Message]) -> ModelResponse:
+    def respond(
+        self,
+        messages: Sequence[Message],
+        tools: Sequence[Tool] = (),
+    ) -> ModelResponse:
         """记录请求，并取出下一条预设响应。"""
         self.requests.append(tuple(messages))
 
