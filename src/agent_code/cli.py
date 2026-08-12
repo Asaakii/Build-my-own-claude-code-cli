@@ -77,6 +77,19 @@ def version() -> None:
 
 
 @app.command()
+def status() -> None:
+    """显示本地与真实 Provider 的配置状态。"""
+    console.print("demo Provider：已就绪（本地运行，不联网）。")
+
+    try:
+        load_anthropic_config()
+    except ConfigurationError as error:
+        console.print(f"anthropic Provider：未配置（{error}）")
+    else:
+        console.print("anthropic Provider：已配置。")
+
+
+@app.command()
 def run(
     prompt: str = typer.Argument(..., help="交给 Agent 处理的一次性提示词。"),
     provider: str = typer.Option(
