@@ -1,0 +1,15 @@
+# 本地凭据与个人配置
+.env
+.env.*
+!.env.example
+
+# Python 与测试缓存
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv*/
+
+# Agent 本地运行数据与可能含私密上下文的记录
+.agent-code/
+实际指导过程复盘.md
