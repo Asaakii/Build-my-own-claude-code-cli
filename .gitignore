@@ -10,6 +10,9 @@ __pycache__/
 .ruff_cache/
 .venv*/
 
+# macOS Finder 元数据
+.DS_Store
+
 # Agent 本地运行数据与可能含私密上下文的记录
 .agent-code/
 实际指导过程复盘.md

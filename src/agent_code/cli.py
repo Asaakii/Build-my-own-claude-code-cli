@@ -1,5 +1,7 @@
 """agent-code 的命令行入口。"""
 
+from pathlib import Path
+
 import typer
 from rich.console import Console
 
@@ -10,6 +12,7 @@ from agent_code.providers.anthropic import AnthropicProvider
 from agent_code.providers.base import Provider, ProviderError
 from agent_code.providers.demo import DemoProvider
 from agent_code.tools.echo import EchoTool
+from agent_code.tools.read_file import ReadFileTool
 
 app = typer.Typer(
     help="一个从零学习构建的 Claude Code 风格命令行 Agent。",
@@ -33,7 +36,13 @@ def create_agent(
         model=model,
         base_url=base_url,
     )
-    return Agent(provider=provider, tools=[EchoTool()])
+    return Agent(
+        provider=provider,
+        tools=[
+            EchoTool(),
+            ReadFileTool(workspace_root=Path.cwd()),
+        ],
+    )
 
 
 def create_provider(
