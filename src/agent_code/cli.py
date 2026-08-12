@@ -15,6 +15,7 @@ from agent_code.tools.echo import EchoTool
 from agent_code.tools.glob_files import GlobTool
 from agent_code.tools.list_dir import ListDirectoryTool
 from agent_code.tools.read_file import ReadFileTool
+from agent_code.tools.search_text import SearchTextTool
 
 app = typer.Typer(
     help="一个从零学习构建的 Claude Code 风格命令行 Agent。",
@@ -45,6 +46,7 @@ def create_agent(
             ReadFileTool(workspace_root=Path.cwd()),
             ListDirectoryTool(workspace_root=Path.cwd()),
             GlobTool(workspace_root=Path.cwd()),
+            SearchTextTool(workspace_root=Path.cwd()),
         ],
     )
 
