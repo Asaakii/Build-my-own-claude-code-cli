@@ -12,6 +12,8 @@ from agent_code.providers.anthropic import AnthropicProvider
 from agent_code.providers.base import Provider, ProviderError
 from agent_code.providers.demo import DemoProvider
 from agent_code.tools.echo import EchoTool
+from agent_code.tools.glob_files import GlobTool
+from agent_code.tools.list_dir import ListDirectoryTool
 from agent_code.tools.read_file import ReadFileTool
 
 app = typer.Typer(
@@ -41,6 +43,8 @@ def create_agent(
         tools=[
             EchoTool(),
             ReadFileTool(workspace_root=Path.cwd()),
+            ListDirectoryTool(workspace_root=Path.cwd()),
+            GlobTool(workspace_root=Path.cwd()),
         ],
     )
 
