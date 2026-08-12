@@ -3,7 +3,18 @@
 from collections.abc import Sequence
 from typing import Any
 
+from anthropic import (
+    Anthropic,
+    APIConnectionError,
+    APIError,
+    APIStatusError,
+    APITimeoutError,
+    AuthenticationError,
+    RateLimitError,
+)
+
 from agent_code.models import Message, ModelResponse, ToolCall
+from agent_code.providers.base import ProviderError
 from agent_code.tools.base import Tool
 
 
@@ -31,9 +42,10 @@ class AnthropicProvider:
         self._max_tokens = max_tokens
 
         if client is None:
-            from anthropic import Anthropic
-
-            client_options: dict[str, Any] = {"api_key": api_key}
+            client_options: dict[str, Any] = {
+                "api_key": api_key,
+                "max_retries": 0,
+            }
 
             if base_url:
                 client_options["base_url"] = base_url
@@ -48,19 +60,44 @@ class AnthropicProvider:
         tools: Sequence[Tool] = (),
     ) -> ModelResponse:
         """调用 Messages API，并转换响应为内部模型。"""
-        response = self._client.messages.create(
-            model=self._model,
-            max_tokens=self._max_tokens,
-            messages=self._to_api_messages(messages),
-            tools=[
-                {
-                    "name": tool.name,
-                    "description": tool.description,
-                    "input_schema": tool.input_schema,
-                }
-                for tool in tools
-            ],
-        )
+        try:
+            response = self._client.messages.create(
+                model=self._model,
+                max_tokens=self._max_tokens,
+                messages=self._to_api_messages(messages),
+                tools=[
+                    {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "input_schema": tool.input_schema,
+                    }
+                    for tool in tools
+                ],
+            )
+        except AuthenticationError as error:
+            raise ProviderError(
+                "模型服务认证失败。请检查本机密钥和 Base URL 配置。"
+            ) from error
+        except RateLimitError as error:
+            raise ProviderError(
+                "模型服务触发限流。请稍后再试，或检查账户额度。"
+            ) from error
+        except APITimeoutError as error:
+            raise ProviderError(
+                "模型服务请求超时。请检查网络后重试。"
+            ) from error
+        except APIConnectionError as error:
+            raise ProviderError(
+                "无法连接模型服务。请检查网络和 Base URL。"
+            ) from error
+        except APIStatusError as error:
+            raise ProviderError(
+                "模型服务返回异常状态。请稍后重试或检查服务配置。"
+            ) from error
+        except APIError as error:
+            raise ProviderError(
+                "模型服务请求失败。请检查配置后重试。"
+            ) from error
 
         text_parts: list[str] = []
         tool_calls: list[ToolCall] = []

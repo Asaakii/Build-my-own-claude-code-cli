@@ -3,8 +3,13 @@
 from types import SimpleNamespace
 from typing import Any
 
+import httpx
+import pytest
+from anthropic import APIConnectionError, AuthenticationError, RateLimitError
+
 from agent_code.models import Message, ToolCall
 from agent_code.providers.anthropic import AnthropicProvider
+from agent_code.providers.base import ProviderError
 from agent_code.tools.echo import EchoTool
 
 
@@ -132,3 +137,79 @@ def test_provider_converts_tool_result_to_user_content_block() -> None:
             ],
         },
     ]
+
+
+
+
+
+@pytest.mark.parametrize(
+    ("error", "message"),
+    [
+        (
+            AuthenticationError(
+                "invalid key",
+                response=httpx.Response(
+                    401,
+                    request=httpx.Request(
+                        "POST",
+                        "https://api.example.com/v1/messages",
+                    ),
+                ),
+                body=None,
+            ),
+            "认证失败",
+        ),
+        (
+            RateLimitError(
+                "rate limited",
+                response=httpx.Response(
+                    429,
+                    request=httpx.Request(
+                        "POST",
+                        "https://api.example.com/v1/messages",
+                    ),
+                ),
+                body=None,
+            ),
+            "触发限流",
+        ),
+        (
+            APIConnectionError(
+                message="connection failed",
+                request=httpx.Request(
+                    "POST",
+                    "https://api.example.com/v1/messages",
+                ),
+            ),
+            "无法连接",
+        ),
+    ],
+)
+def test_provider_converts_api_errors_to_safe_messages(
+    error: Exception,
+    message: str,
+) -> None:
+    """SDK 异常应转为不含敏感信息的用户可读错误。"""
+
+    class FailingMessagesAPI:
+        """始终抛出指定异常的假 API。"""
+
+        def create(self, **kwargs: Any) -> object:
+            """模拟 API 请求失败。"""
+            raise error
+
+    class FailingClient:
+        """使用失败 API 的假客户端。"""
+
+        messages = FailingMessagesAPI()
+
+    provider = AnthropicProvider(
+        api_key="secret-value-must-not-appear",
+        model="test-model",
+        client=FailingClient(),
+    )
+
+    with pytest.raises(ProviderError, match=message) as error_info:
+        provider.respond([Message(role="user", content="你好")])
+
+    assert "secret-value-must-not-appear" not in str(error_info.value)

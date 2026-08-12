@@ -7,6 +7,10 @@ from agent_code.models import Message, ModelResponse
 from agent_code.tools.base import Tool
 
 
+class ProviderError(RuntimeError):
+    """模型 Provider 无法完成请求时抛出的用户可读错误。"""
+
+
 class Provider(Protocol):
     """负责把消息与工具定义发送给模型，并返回响应。"""
 

@@ -4,10 +4,10 @@ import typer
 from rich.console import Console
 
 from agent_code import __version__
-from agent_code.agent import Agent
+from agent_code.agent import Agent, AgentResult
 from agent_code.config import ConfigurationError, load_anthropic_config
 from agent_code.providers.anthropic import AnthropicProvider
-from agent_code.providers.base import Provider
+from agent_code.providers.base import Provider, ProviderError
 from agent_code.providers.demo import DemoProvider
 from agent_code.tools.echo import EchoTool
 
@@ -101,7 +101,7 @@ def run(
         model=model,
         base_url=base_url,
     )
-    result = agent.run(prompt)
+    result = _run_agent_or_exit(agent, prompt)
     console.print(result.text)
 
 
@@ -148,7 +148,12 @@ def repl(
         if not prompt:
             continue
 
-        result = agent.run(prompt)
+        try:
+            result = agent.run(prompt)
+        except ProviderError as error:
+            console.print(f"[red]模型服务错误：{error}[/red]")
+            continue
+
         console.print(f"agent> {result.text}")
 
 
@@ -167,6 +172,15 @@ def _create_agent_or_exit(
     except ConfigurationError as error:
         console.print(f"[red]配置错误：{error}[/red]")
         raise typer.Exit(code=2) from error
+
+
+def _run_agent_or_exit(agent: Agent, prompt: str) -> AgentResult:
+    """将模型服务错误转换为明确的 CLI 错误。"""
+    try:
+        return agent.run(prompt)
+    except ProviderError as error:
+        console.print(f"[red]模型服务错误：{error}[/red]")
+        raise typer.Exit(code=1) from error
 
 
 def main() -> None:
