@@ -1,6 +1,6 @@
 """最小 Agent Loop。"""
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 from agent_code.models import Message, ToolCall
@@ -32,9 +32,17 @@ class Agent:
         self._tools = {tool.name: tool for tool in tools}
         self._max_turns = max_turns
 
-    def run(self, prompt: str) -> AgentResult:
-        """执行一次“模型 → 工具 → 模型”的循环。"""
-        messages = [Message(role="user", content=prompt)]
+    def run(
+        self,
+        prompt: str,
+        history: Sequence[Message] = (),
+    ) -> AgentResult:
+        """执行一次“历史 → 用户输入 → 模型 → 工具 → 模型”的循环。"""
+        if any(message.role not in {"user", "assistant"} for message in history):
+            raise ValueError("恢复的会话历史只允许 user 或 assistant 消息。")
+
+        messages = list(history)
+        messages.append(Message(role="user", content=prompt))
 
         for _ in range(self._max_turns):
             response = self._provider.respond(

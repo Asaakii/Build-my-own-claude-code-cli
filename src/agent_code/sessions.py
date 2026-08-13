@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -60,23 +61,35 @@ class SessionStore:
         self._path_for(session_id).touch(exist_ok=False)
         return session_id
 
-    def append_message(self, session_id: str, message: Message) -> None:
-        """保存可恢复的用户或助手消息，不保存工具原始输出。"""
-        if message.role not in {"user", "assistant"}:
-            raise ValueError("会话历史只允许保存 user 或 assistant 消息。")
+    def append_messages(
+        self,
+        session_id: str,
+        messages: Sequence[Message],
+    ) -> None:
+        """原子追加一组可恢复消息，避免只保存半个对话回合。"""
+        records: list[dict[str, object]] = []
 
-        self._append_record(
-            session_id,
-            {
-                "type": "message",
-                "timestamp": self._timestamp(),
-                "role": message.role,
-                "content": self._sanitize_and_limit(
-                    message.content,
-                    self.max_content_chars,
-                ),
-            },
-        )
+        for message in messages:
+            if message.role not in {"user", "assistant"}:
+                raise ValueError("会话历史只允许保存 user 或 assistant 消息。")
+
+            records.append(
+                {
+                    "type": "message",
+                    "timestamp": self._timestamp(),
+                    "role": message.role,
+                    "content": self._sanitize_and_limit(
+                        message.content,
+                        self.max_content_chars,
+                    ),
+                }
+            )
+
+        self._append_records(session_id, records)
+
+    def append_message(self, session_id: str, message: Message) -> None:
+        """保存一条可恢复消息，供单条写入场景使用。"""
+        self.append_messages(session_id, (message,))
 
     def append_tool_event(
         self,
@@ -93,18 +106,20 @@ class SessionStore:
         if status not in {"completed", "failed", "pending"}:
             raise ValueError("工具事件状态不受支持。")
 
-        self._append_record(
+        self._append_records(
             session_id,
-            {
-                "type": "tool_event",
-                "timestamp": self._timestamp(),
-                "tool_name": tool_name,
-                "status": status,
-                "summary": self._sanitize_and_limit(
-                    summary,
-                    self.max_tool_summary_chars,
-                ),
-            },
+            (
+                {
+                    "type": "tool_event",
+                    "timestamp": self._timestamp(),
+                    "tool_name": tool_name,
+                    "status": status,
+                    "summary": self._sanitize_and_limit(
+                        summary,
+                        self.max_tool_summary_chars,
+                    ),
+                },
+            ),
         )
 
     def load_messages(self, session_id: str) -> tuple[Message, ...]:
@@ -161,20 +176,32 @@ class SessionStore:
 
         return tuple(sessions)
 
-    def _append_record(self, session_id: str, record: dict[str, object]) -> None:
+    def _append_records(
+        self,
+        session_id: str,
+        records: Sequence[dict[str, object]],
+    ) -> None:
         path = self._path_for(session_id)
 
         if not path.exists():
             raise ValueError("会话不存在，无法写入。")
 
-        line = json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
-        encoded_line = line.encode("utf-8")
+        if not records:
+            return
 
-        if path.stat().st_size + len(encoded_line) > self.max_session_bytes:
+        encoded_lines = b"".join(
+            (
+                json.dumps(record, ensure_ascii=False, separators=(",", ":"))
+                + "\n"
+            ).encode("utf-8")
+            for record in records
+        )
+
+        if path.stat().st_size + len(encoded_lines) > self.max_session_bytes:
             raise ValueError("会话文件已达到大小上限，拒绝继续保存。")
 
         with path.open("ab") as session_file:
-            session_file.write(encoded_line)
+            session_file.write(encoded_lines)
 
     def _read_records(self, session_id: str) -> tuple[dict[str, object], ...]:
         path = self._path_for(session_id)

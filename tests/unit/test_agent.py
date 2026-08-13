@@ -75,3 +75,21 @@ def test_agent_stops_after_reaching_max_turns() -> None:
 
     with pytest.raises(RuntimeError, match="1 轮后仍未结束"):
         agent.run("不要结束")
+
+
+def test_agent_sends_restored_history_before_new_prompt() -> None:
+    """恢复的 user / assistant 消息应先于当前输入发送给模型。"""
+    provider = MockProvider(responses=[ModelResponse(text="继续回答。")])
+    agent = Agent(provider=provider, tools=[])
+    history = (
+        Message(role="user", content="旧问题"),
+        Message(role="assistant", content="旧回答"),
+    )
+
+    agent.run("新问题", history=history)
+
+    assert provider.requests[0] == (
+        Message(role="user", content="旧问题"),
+        Message(role="assistant", content="旧回答"),
+        Message(role="user", content="新问题"),
+    )

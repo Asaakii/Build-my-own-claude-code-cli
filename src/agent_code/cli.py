@@ -14,9 +14,11 @@ from agent_code.edits import (
     PendingEditStore,
     apply_pending_edit,
 )
+from agent_code.models import Message
 from agent_code.providers.anthropic import AnthropicProvider
 from agent_code.providers.base import Provider, ProviderError
 from agent_code.providers.demo import DemoProvider
+from agent_code.sessions import SessionStore
 from agent_code.tools.check_command import CheckCommandTool
 from agent_code.tools.echo import EchoTool
 from agent_code.tools.glob_files import GlobTool
@@ -176,8 +178,28 @@ def repl(
         "--base-url",
         help="覆盖 ANTHROPIC_BASE_URL 环境变量。",
     ),
+    session: str | None = typer.Option(
+        None,
+        "--session",
+        help="恢复指定会话；不提供时创建新会话。",
+    ),
 ) -> None:
     """进入交互式 Agent 终端。"""
+    session_store = SessionStore(Path.cwd())
+
+    try:
+        if session is None:
+            session_id = session_store.create()
+            history: tuple[Message, ...] = ()
+            session_state = "新建"
+        else:
+            session_id = session
+            history = session_store.load_messages(session_id)
+            session_state = f"已恢复，已有 {len(history)} 条对话消息"
+    except ValueError as error:
+        console.print(f"[red]会话错误：{error}[/red]")
+        raise typer.Exit(code=2) from error
+
     pending_edits = PendingEditStore()
     pending_commands = PendingCommandStore()
     audit_log = EditAuditLog()
@@ -190,8 +212,9 @@ def repl(
         audit_log=audit_log,
     )
     console.print(
-        "已进入交互模式。输入 /exit、/quit、/audit、"
-        "/approve <编辑确认 ID> 或 /approve-command <命令确认 ID>。"
+        f"会话：{session_id}（{session_state}）。输入 /sessions、/exit、"
+        "/quit、/audit、/approve <编辑确认 ID> 或 "
+        "/approve-command <命令确认 ID>。"
     )
 
     while True:
@@ -207,6 +230,19 @@ def repl(
         if prompt in {"/exit", "/quit"}:
             console.print("已退出 REPL。")
             break
+
+        if prompt == "/sessions":
+            for session_info in session_store.list_sessions():
+                corruption_note = (
+                    f"，损坏行：{session_info.corrupted_line_count}"
+                    if session_info.corrupted_line_count
+                    else ""
+                )
+                console.print(
+                    f"{session_info.session_id} | "
+                    f"对话消息：{session_info.message_count}{corruption_note}"
+                )
+            continue
 
         if prompt == "/audit":
             console.print(audit_log.render())
@@ -260,10 +296,22 @@ def repl(
             continue
 
         try:
-            result = agent.run(prompt)
+            result = agent.run(prompt, history=history)
         except ProviderError as error:
             console.print(f"[red]模型服务错误：{error}[/red]")
             continue
+
+        try:
+            session_store.append_messages(
+                session_id,
+                (
+                    Message(role="user", content=prompt),
+                    Message(role="assistant", content=result.text),
+                ),
+            )
+            history = session_store.load_messages(session_id)
+        except ValueError as error:
+            console.print(f"[yellow]会话未保存：{error}[/yellow]")
 
         console.print(f"agent> {result.text}")
 

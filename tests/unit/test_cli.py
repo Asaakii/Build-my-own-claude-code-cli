@@ -4,6 +4,8 @@ from typer.testing import CliRunner
 
 from agent_code import __version__
 from agent_code.cli import app
+from agent_code.models import Message
+from agent_code.sessions import SessionStore
 
 runner = CliRunner()
 
@@ -129,3 +131,46 @@ def test_repl_rejects_command_approval_without_identifier() -> None:
 
     assert result.exit_code == 0
     assert "用法：/approve-command <命令确认 ID>" in result.output
+
+
+def test_repl_creates_persists_and_restores_a_session(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """新会话应保存对话，并能通过 --session 在新进程中恢复。"""
+    monkeypatch.chdir(tmp_path)
+
+    first_result = runner.invoke(app, ["repl"], input="第一句\n/exit\n")
+
+    assert first_result.exit_code == 0
+    session_id = first_result.output.split("会话：")[1].split("（")[0]
+
+    store = SessionStore(tmp_path)
+    assert store.load_messages(session_id) == (
+        Message(role="user", content="第一句"),
+        Message(role="assistant", content="演示完成：第一句"),
+    )
+
+    restored_result = runner.invoke(
+        app,
+        ["repl", "--session", session_id],
+        input="/sessions\n第二句\n/exit\n",
+    )
+
+    assert restored_result.exit_code == 0
+    assert "已恢复，已有 2 条对话消息" in restored_result.output
+    assert f"{session_id} | 对话消息：2" in restored_result.output
+    assert store.load_messages(session_id)[-2:] == (
+        Message(role="user", content="第二句"),
+        Message(role="assistant", content="演示完成：第二句"),
+    )
+
+
+def test_repl_rejects_unknown_session_id(tmp_path, monkeypatch) -> None:
+    """不存在的会话不可伪造为恢复成功。"""
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["repl", "--session", "missing"])
+
+    assert result.exit_code == 2
+    assert "会话错误：会话不存在，无法恢复。" in result.output
