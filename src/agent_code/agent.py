@@ -3,6 +3,7 @@
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
+from agent_code.context import ContextManager, ContextReport, TokenEstimator
 from agent_code.hooks import (
     PostToolUseEvent,
     PostToolUseHook,
@@ -21,6 +22,7 @@ class AgentResult:
 
     text: str
     messages: tuple[Message, ...]
+    context_report: ContextReport
 
 
 class Agent:
@@ -32,6 +34,7 @@ class Agent:
         tools: Iterable[Tool],
         pre_tool_use_hooks: Iterable[PreToolUseHook] = (),
         post_tool_use_hooks: Iterable[PostToolUseHook] = (),
+        token_estimator: TokenEstimator | None = None,
         max_turns: int = 10,
     ) -> None:
         if max_turns <= 0:
@@ -42,6 +45,7 @@ class Agent:
         self._pre_tool_use_hooks = tuple(pre_tool_use_hooks)
         self._post_tool_use_hooks = tuple(post_tool_use_hooks)
         self._max_turns = max_turns
+        self._token_estimator = token_estimator
 
     def run(
         self,
@@ -53,6 +57,7 @@ class Agent:
         if any(message.role not in {"user", "assistant"} for message in history):
             raise ValueError("恢复的会话历史只允许 user 或 assistant 消息。")
 
+        context_manager = ContextManager(self._token_estimator)
         messages: list[Message] = []
         project_memory_message_count = 0
 
@@ -60,10 +65,11 @@ class Agent:
             messages.append(Message(role="user", content=project_memory))
             project_memory_message_count = 1
 
-        messages.extend(history)
+        messages.extend(context_manager.prepare_history(history))
         messages.append(Message(role="user", content=prompt))
 
         for _ in range(self._max_turns):
+            context_manager.record_request(messages)
             response = self._provider.respond(
                 messages,
                 tools=tuple(self._tools.values()),
@@ -75,18 +81,22 @@ class Agent:
                     tool_calls=response.tool_calls,
                 )
             )
+            context_manager.record_model_output(response.text)
 
             if not response.tool_calls:
                 return AgentResult(
                     text=response.text,
                     messages=tuple(messages[project_memory_message_count:]),
+                    context_report=context_manager.report(),
                 )
 
             for tool_call in response.tool_calls:
                 messages.append(
                     Message(
                         role="tool",
-                        content=self._execute_tool(tool_call),
+                        content=context_manager.limit_tool_result(
+                            self._execute_tool(tool_call)
+                        ),
                         tool_call_id=tool_call.id,
                     )
                 )

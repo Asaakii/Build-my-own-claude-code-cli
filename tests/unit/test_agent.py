@@ -237,3 +237,30 @@ def test_agent_plan_mode_prevents_write_tool_execution() -> None:
     agent.run("修改文件")
 
     assert "当前处于 Plan Mode" in provider.requests[1][-1].content
+
+
+def test_agent_compresses_long_history_and_still_completes_tool_task() -> None:
+    """历史压缩后仍应保留足够上下文完成后续工具调用。"""
+    tool_call = ToolCall(
+        id="call-1",
+        name="echo",
+        arguments={"text": "关键任务结果"},
+    )
+    provider = MockProvider(
+        responses=[
+            ModelResponse(tool_calls=(tool_call,)),
+            ModelResponse(text="关键任务完成。"),
+        ]
+    )
+    history = tuple(
+        Message(role="user", content=f"旧内容 {index}" + "x" * 2_000)
+        for index in range(5)
+    )
+    agent = Agent(provider=provider, tools=[EchoTool()])
+
+    result = agent.run("执行关键任务", history=history)
+
+    assert "历史摘要（来源：会话较早消息" in provider.requests[0][0].content
+    assert provider.requests[1][-1].content == "关键任务结果"
+    assert result.text == "关键任务完成。"
+    assert result.context_report.summarized_history_messages == 1
