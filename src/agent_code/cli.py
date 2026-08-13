@@ -1,6 +1,7 @@
 """agent-code 的命令行入口。"""
 
 from pathlib import Path
+from time import sleep
 
 import typer
 from rich.console import Console
@@ -276,12 +277,15 @@ def telegram_run(
 
     try:
         while True:
-            channel.poll_once()
+            try:
+                channel.poll_once()
+            except TelegramError as error:
+                console.print(
+                    f"[yellow]Telegram 轮询失败，将在 5 秒后重试：{error}[/yellow]"
+                )
+                sleep(5)
     except KeyboardInterrupt:
         console.print("Telegram 渠道已停止。")
-    except TelegramError as error:
-        console.print(f"[red]Telegram 渠道已停止：{error}[/red]")
-        raise typer.Exit(code=1) from error
 
 
 @app.command()

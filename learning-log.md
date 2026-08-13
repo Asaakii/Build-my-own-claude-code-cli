@@ -280,3 +280,10 @@
 - Telegram 只处理配置用户的私聊文本，按用户绑定会话；外部服务强制 Plan Mode，文件写入和 Shell 操作不能通过聊天绕过本地确认。
 - 验证结果：Bot 身份接口成功返回 `@Asaakii_OpenClaw_bot`；Python 3.12.13 下完整自动化测试、Ruff 和差异检查通过。Bot Token、用户 ID、模型 Key 均未进入 Git 或公开学习日志。
 - 关键理解：外部消息渠道不应等价于远程终端。白名单、私聊限制、offset 去重、会话隔离和程序级只读策略必须共同存在。
+
+### 阶段 16.1：Telegram 身份事实与常驻修复
+
+- 修复 Telegram Bot 把 Anthropic 兼容协议误称为自身模型身份的问题：`/start`、`/help` 与常见“你是什么模型”问题由程序明确回答“用户开发的 agent-code，底层使用 DeepSeek，不是 Claude”。普通消息也会带入不可覆盖的身份事实上下文。
+- 长轮询的临时网络失败改为等待 5 秒后重试，避免一次 API 波动退出常驻服务；macOS 对 Downloads 后台访问受限时，运行时副本部署到用户 Application Support 目录并由 LaunchAgent 保持在线。
+- 验证结果：Python 3.12.13 环境下 128 项测试、Ruff 和差异检查通过；更新后的 Bot 进程已由 LaunchAgent 重新启动。
+- 关键理解：模型回答中的协议名称不是可靠的身份事实。产品身份、模型提供方、协议适配与项目作者必须由应用层明确区分，而不是让模型根据训练语料猜测。

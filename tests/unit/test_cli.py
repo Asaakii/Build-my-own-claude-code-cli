@@ -146,6 +146,36 @@ def test_smoke_requires_the_real_provider_and_verifies_tool_round_trip(
     assert "仅支持 --provider anthropic" in demo_result.output
 
 
+def test_telegram_run_retries_transient_poll_failures(
+    monkeypatch,
+) -> None:
+    """Telegram 短暂轮询失败时不应退出常驻进程。"""
+    from agent_code.telegram import TelegramError
+
+    class FakeChannel:
+        def __init__(self, *args, **kwargs):
+            del args, kwargs
+            self.calls = 0
+
+        def poll_once(self):
+            self.calls += 1
+            if self.calls == 1:
+                raise TelegramError("暂时失败")
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr("agent_code.cli.load_telegram_config", lambda: object())
+    monkeypatch.setattr("agent_code.cli.TelegramHttpApi", lambda _: object())
+    monkeypatch.setattr("agent_code.cli.TelegramChannel", FakeChannel)
+    monkeypatch.setattr("agent_code.cli.create_agent", lambda **_: object())
+    monkeypatch.setattr("agent_code.cli.sleep", lambda _: None)
+
+    result = runner.invoke(app, ["telegram", "run"])
+
+    assert result.exit_code == 0
+    assert "5 秒后重试" in result.output
+    assert "Telegram 渠道已停止。" in result.output
+
+
 def test_repl_rejects_approve_command_without_identifier() -> None:
     """REPL 应拒绝没有确认 ID 的写入命令。"""
     result = runner.invoke(app, ["repl"], input="/approve\n/exit\n")

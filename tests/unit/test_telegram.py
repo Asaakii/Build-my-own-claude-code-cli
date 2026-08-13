@@ -107,7 +107,23 @@ def test_telegram_service_persists_a_stable_user_session(tmp_path) -> None:
         ProjectMemoryStore(tmp_path),
     )
 
-    assert "仅支持白名单私聊" in service.handle_message(7, "/start")
+    assert "由你开发" in service.handle_message(7, "/start")
     assert service.handle_message(7, "你好") == "演示完成：你好"
     messages = SessionStore(tmp_path).load_messages("telegram-7")
     assert messages[-1].content == "演示完成：你好"
+
+
+def test_telegram_identity_answer_is_fixed_and_truthful(tmp_path) -> None:
+    """身份问题不交给模型猜测，避免把兼容协议误作模型身份。"""
+    service = TelegramAgentService(
+        Agent(DemoProvider(), [EchoTool()], pre_tool_use_hooks=(PlanMode(),)),
+        SessionStore(tmp_path),
+        ProjectMemoryStore(tmp_path),
+    )
+
+    answer = service.handle_message(7, "你是什么模型？")
+
+    assert "agent-code" in answer
+    assert "DeepSeek" in answer
+    assert "不是 Claude" in answer
+    assert "Anthropic 开发" in answer
