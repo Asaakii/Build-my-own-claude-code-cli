@@ -24,6 +24,8 @@ from agent_code.providers.base import Provider, ProviderError
 from agent_code.providers.demo import DemoProvider
 from agent_code.sessions import SessionStore
 from agent_code.skills import SkillStore
+from agent_code.subagents import ReadOnlySubagentRunner
+from agent_code.task_graph import TaskCoordinator, TaskGraphStore
 from agent_code.todos import TodoStatus, TodoStore
 from agent_code.tools.check_command import CheckCommandTool
 from agent_code.tools.echo import EchoTool
@@ -203,6 +205,7 @@ def repl(
     memory_store = ProjectMemoryStore(Path.cwd())
     todo_store = TodoStore(Path.cwd())
     skill_store = SkillStore(Path.cwd())
+    task_store = TaskGraphStore(Path.cwd())
 
     try:
         if session is None:
@@ -222,6 +225,22 @@ def repl(
     audit_log = EditAuditLog()
     loaded_hooks = load_project_hooks(Path.cwd())
     plan_mode = PlanMode()
+    task_coordinator = TaskCoordinator(
+        task_store,
+        ReadOnlySubagentRunner(
+            lambda: create_provider(
+                provider_name=provider,
+                model=model,
+                base_url=base_url,
+            )
+        ),
+    )
+    recovered_tasks = task_store.recover_in_progress()
+
+    if recovered_tasks:
+        console.print(
+            f"[yellow]已恢复 {len(recovered_tasks)} 个未完成领取任务。[/yellow]"
+        )
 
     for warning in loaded_hooks.warnings:
         console.print(f"[yellow]{warning}[/yellow]")
@@ -314,6 +333,20 @@ def repl(
                 console.print(_handle_todo_command(todo_store, prompt))
             except ValueError as error:
                 console.print(f"[red]Todo 错误：{error}[/red]")
+            continue
+
+        if prompt.startswith("/task"):
+            try:
+                console.print(
+                    _handle_task_command(
+                        task_store,
+                        task_coordinator,
+                        worker_id=f"repl-{session_id}",
+                        prompt=prompt,
+                    )
+                )
+            except ValueError as error:
+                console.print(f"[red]任务图错误：{error}[/red]")
             continue
 
         if prompt in {"/skills", "/skill"}:
@@ -463,6 +496,66 @@ def _handle_todo_command(store: TodoStore, prompt: str) -> str:
     )
 
 
+def _handle_task_command(
+    store: TaskGraphStore,
+    coordinator: TaskCoordinator,
+    *,
+    worker_id: str,
+    prompt: str,
+) -> str:
+    """处理任务图的添加、依赖、恢复和只读分派。"""
+    parts = prompt.split(maxsplit=3)
+
+    if parts == ["/task"]:
+        return _render_task_graph(store)
+
+    if len(parts) == 3 and parts[1] == "add":
+        item = store.add(parts[2])
+        return f"已添加只读任务：{item.id}"
+
+    if len(parts) == 3 and parts[1] == "add-write":
+        item = store.add(parts[2], read_only=False)
+        return f"已添加主代理串行写任务：{item.id}"
+
+    if len(parts) == 4 and parts[1] == "add-after":
+        item = store.add(parts[3], dependencies=(parts[2],))
+        return f"已添加依赖任务：{item.id}，等待 {parts[2]}"
+
+    if parts == ["/task", "dispatch"]:
+        finished = coordinator.dispatch_ready(worker_id)
+        return (
+            "当前没有可分派的只读任务。"
+            if not finished
+            else "\n".join(
+                f"{item.id} | {item.status} | {item.result_summary or '无摘要'}"
+                for item in finished
+            )
+        )
+
+    if parts == ["/task", "recover"]:
+        recovered = store.recover_in_progress()
+        return f"已恢复 {len(recovered)} 个未完成领取任务。"
+
+    raise ValueError(
+        "用法：/task；/task add <内容>；/task add-write <内容>；"
+        "/task add-after <依赖 ID> <内容>；/task dispatch；/task recover"
+    )
+
+
+def _render_task_graph(store: TaskGraphStore) -> str:
+    """显示任务状态与依赖，不显示子代理的完整私有上下文。"""
+    items = store.list_items()
+
+    if not items:
+        return "当前项目没有任务图节点。"
+
+    return "\n".join(
+        f"{item.id} | {item.status} | {'只读' if item.read_only else '主代理写任务'} | "
+        f"依赖：{','.join(item.dependencies) or '无'} | {item.text}"
+        for item in items
+    )
+
+
 def _render_plan(mode: PlanMode, store: TodoStore) -> str:
     """以 Todo 状态输出可审阅、可批准的结构化计划。"""
     items = store.list_items()
@@ -504,6 +597,7 @@ def _render_repl_help() -> str:
             "/session list：列出可恢复会话（/sessions 为兼容别名）。",
             "/memory：查看；/memory add <文本>：保存；/memory remove <ID>：删除。",
             "/todo：查看；/todo add <内容>；/todo set <ID> <状态>。",
+            "/task：查看；/task add <内容>；/task dispatch；写任务不会分派。",
             "/skills：列出元数据；/skill load <ID>：按需读取技能正文。",
             "/permissions：显示 Shell 权限边界。",
             "/plan：查看；/plan add <步骤>；/plan on；/plan off：关闭计划模式。",

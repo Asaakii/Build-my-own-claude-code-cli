@@ -269,3 +269,22 @@ def test_repl_lists_and_loads_skills_on_demand(tmp_path, monkeypatch) -> None:
     assert "review | 审查 | 审查代码 | skills/review/SKILL.md" in result.output
     assert "已加载技能：审查" in result.output
     assert "正文步骤" in result.output
+
+
+def test_repl_task_commands_keep_write_tasks_out_of_subagent_dispatch(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """任务图命令可添加和显示任务；写任务不会作为子代理候选。"""
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(
+        app,
+        ["repl"],
+        input="/task add 研究代码\n/task add-write 修改代码\n/task\n/exit\n",
+    )
+
+    assert result.exit_code == 0
+    assert "已添加只读任务：" in result.output
+    assert "已添加主代理串行写任务：" in result.output
+    assert "主代理写任务" in result.output
