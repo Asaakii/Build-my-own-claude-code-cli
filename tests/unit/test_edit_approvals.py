@@ -156,3 +156,80 @@ def test_create_preview_rejects_missing_parent_and_symlink(tmp_path) -> None:
     ):
         with pytest.raises(ValueError, match=expected_message):
             tool.run({"path": path, "content": "内容"})
+
+
+def test_failed_atomic_replace_preserves_original_and_audits(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """原子替换失败时，原文件与临时文件状态都必须安全。"""
+    file_path = tmp_path / "settings.py"
+    original_text = "version = 1\n"
+    file_path.write_text(original_text, encoding="utf-8")
+    pending_edits = PendingEditStore()
+    audit_log = EditAuditLog()
+    preview_tool = PreviewReplaceTool(
+        tmp_path,
+        pending_edits=pending_edits,
+    )
+    preview = preview_tool.run(
+        {
+            "path": "settings.py",
+            "old_text": "version = 1",
+            "new_text": "version = 2",
+            "expected_sha256": _sha256(original_text),
+        }
+    )
+
+    def fail_replace(_source, _target) -> None:
+        raise OSError("模拟原子替换失败")
+
+    monkeypatch.setattr("agent_code.edits.os.replace", fail_replace)
+
+    with pytest.raises(RuntimeError, match="原子写入失败"):
+        apply_pending_edit(
+            pending_edits,
+            workspace_root=tmp_path,
+            approval_id=_approval_id(preview),
+            audit_log=audit_log,
+        )
+
+    assert file_path.read_text(encoding="utf-8") == original_text
+    assert list(tmp_path.glob(".agent-code-*")) == []
+    assert "已拒绝 | replace | settings.py" in audit_log.render()
+
+
+def test_failed_atomic_create_leaves_no_target_or_temp_file(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """原子创建失败时，目标文件和临时文件都不能遗留。"""
+    pending_edits = PendingEditStore()
+    audit_log = EditAuditLog()
+    preview_tool = PreviewCreateFileTool(
+        tmp_path,
+        pending_edits=pending_edits,
+    )
+    preview = preview_tool.run(
+        {
+            "path": "new-note.txt",
+            "content": "不应写入\n",
+        }
+    )
+
+    def fail_link(_source, _target) -> None:
+        raise OSError("模拟原子创建失败")
+
+    monkeypatch.setattr("agent_code.edits.os.link", fail_link)
+
+    with pytest.raises(RuntimeError, match="创建新文件失败"):
+        apply_pending_edit(
+            pending_edits,
+            workspace_root=tmp_path,
+            approval_id=_approval_id(preview),
+            audit_log=audit_log,
+        )
+
+    assert not (tmp_path / "new-note.txt").exists()
+    assert list(tmp_path.glob(".agent-code-*")) == []
+    assert "已拒绝 | create | new-note.txt" in audit_log.render()
