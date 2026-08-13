@@ -263,12 +263,12 @@
 - 新增架构图、安全回归清单、无密钥样例工作区和 `python -m agent_code` 入口；端到端测试在新工作区启动模块入口并完成 Mock 演示。
 - REPL 增加 `/status`，仅汇总 Provider、会话消息数、Plan Mode 与 Todo 状态，不回显消息正文；同时修复 `/todo add` 含空格内容会被错误拒绝的问题。
 - 验证结果：Python 3.12.13 环境下 121 项测试通过；`ruff check .` 与 `git diff --check` 通过。wheel 在全新 Python 3.12 虚拟环境中安装后，`agent-code --help` 与无密钥 Mock 演示成功，随后卸载验证通过。
-- 暂未验证：真实模型冒烟测试未运行，因为当前终端未配置 `ANTHROPIC_API_KEY` 与 `AGENT_CODE_MODEL`。这避免了伪造成功或对未知账户发起可能计费的请求。
+- 真实模型验收随后使用 HermesLite 已有 DeepSeek 配置的临时变量映射完成；未复制密钥到本项目，也未写入公开日志。
 - 关键理解：发布验收不只是“测试全绿”。安装路径、默认无密钥体验、公开文档的安全边界和未实现能力都必须可验证、可复现、可诚实说明。
 
 ### 阶段 15.1：受控真实 Provider 冒烟入口
 
 - 新增 `agent-code smoke`：仅接受真实的 `anthropic` Provider，只暴露 `echo` 工具，并要求模型完成 `tool_use → echo(smoke-ok) → SMOKE_OK` 的完整回合。
 - 验收命令不会提供文件或 Shell 工具，避免为一次连通性检查扩大副作用范围；若模型不调用工具或最终文本不精确匹配，命令以失败退出。
-- 验证结果：命令的 Provider 限制、工具回合与最终结果由不联网协议替身测试覆盖；当前终端仍未配置真实模型所需变量，因此没有发起可能计费的网络请求。
+- 验证结果：命令的 Provider 限制、工具回合与最终结果由不联网协议替身测试覆盖；另以 HermesLite 的 `LLM_API_KEY`、`LLM_MODEL` 和 DeepSeek Anthropic 兼容地址临时映射运行，真实服务返回 `SMOKE_OK`，并观察到本地 `echo(smoke-ok)` 工具结果。
 - 关键理解：真实冒烟应该是明确、可重复且能力最小的验收流程，而不是拿完整 Agent 在工作区上做不可预测的试运行。

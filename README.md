@@ -87,6 +87,14 @@ Anthropic Messages API；若服务仅提供 OpenAI 协议，不能只改 Base UR
 `agent-code smoke` 不会使用文件或 Shell 工具，只要求模型调用 `echo` 并返回
 `SMOKE_OK`；它是有配置时的真实 Provider 验收命令，可能产生一次模型请求费用。
 
+### 复用 HermesLite 的 DeepSeek 配置
+
+HermesLite 的 `LLM_API_KEY` 和 `LLM_MODEL` 可以复用，但它的
+`LLM_BASE_URL=https://api.deepseek.com` 是 OpenAI 兼容地址，不能原样传给本项目。
+本项目需使用 DeepSeek 的 Anthropic 兼容地址：
+`https://api.deepseek.com/anthropic`。本次项目验收已用该映射成功完成一次受控工具调用。
+不要复制或提交密钥；仅在当前终端临时映射变量后运行 `agent-code smoke`。
+
 ## 验证与打包
 
 ```bash
