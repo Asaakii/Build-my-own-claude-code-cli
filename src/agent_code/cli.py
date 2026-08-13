@@ -16,6 +16,7 @@ from agent_code.edits import (
 from agent_code.providers.anthropic import AnthropicProvider
 from agent_code.providers.base import Provider, ProviderError
 from agent_code.providers.demo import DemoProvider
+from agent_code.tools.check_command import CheckCommandTool
 from agent_code.tools.echo import EchoTool
 from agent_code.tools.glob_files import GlobTool
 from agent_code.tools.list_dir import ListDirectoryTool
@@ -53,6 +54,7 @@ def create_agent(
     return Agent(
         provider=provider,
         tools=[
+            CheckCommandTool(),
             EchoTool(),
             ReadFileTool(workspace_root=Path.cwd()),
             ListDirectoryTool(workspace_root=Path.cwd()),
