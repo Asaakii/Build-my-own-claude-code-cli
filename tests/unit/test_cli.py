@@ -216,3 +216,17 @@ def test_repl_supports_help_session_clear_and_permission_commands(
     assert "已清空当前对话并新建会话：" in result.output
     assert "对话消息：0" in result.output
     assert "Shell 权限边界：" in result.output
+
+
+def test_repl_plan_mode_is_on_by_default_and_can_be_explicitly_disabled(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """Plan Mode 状态仅随当前 REPL 会话变化。"""
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["repl"], input="/plan\n/plan off\n/plan\n/exit\n")
+
+    assert result.exit_code == 0
+    assert "Plan Mode：开启（只读探索）。" in result.output
+    assert "Plan Mode：关闭（仍受既有权限引擎与确认流程限制）。" in result.output

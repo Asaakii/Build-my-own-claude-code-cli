@@ -6,6 +6,7 @@ from agent_code.agent import Agent
 from agent_code.hook_config import DenyToolsHook
 from agent_code.hooks import PostToolUseEvent, PreToolUseDecision, PreToolUseEvent
 from agent_code.models import Message, ModelResponse, ToolCall
+from agent_code.plan_mode import PlanMode
 from agent_code.providers.mock import MockProvider
 from agent_code.tools.echo import EchoTool
 
@@ -198,3 +199,41 @@ def test_declarative_deny_hook_rejects_only_configured_tool() -> None:
     assert hook.before_tool_use(
         PreToolUseEvent(ToolCall(id="2", name="read_file", arguments={}))
     ) == PreToolUseDecision(allow=True)
+
+
+def test_plan_mode_blocks_write_related_tools_until_explicitly_disabled() -> None:
+    """Plan Mode 不能通过模型提示词绕过，必须显式由 REPL 状态关闭。"""
+    mode = PlanMode()
+    write_event = PreToolUseEvent(
+        ToolCall(id="1", name="preview_replace", arguments={})
+    )
+
+    assert mode.before_tool_use(write_event).allow is False
+
+    mode.enabled = False
+
+    assert mode.before_tool_use(write_event).allow is True
+
+
+def test_agent_plan_mode_prevents_write_tool_execution() -> None:
+    """在 Agent 中接入 Plan Mode 后，写工具不能实际执行。"""
+    tool_call = ToolCall(
+        id="1",
+        name="preview_replace",
+        arguments={"path": "file.py"},
+    )
+    provider = MockProvider(
+        responses=[
+            ModelResponse(tool_calls=(tool_call,)),
+            ModelResponse(text="已规划。"),
+        ]
+    )
+    agent = Agent(
+        provider=provider,
+        tools=[],
+        pre_tool_use_hooks=[PlanMode()],
+    )
+
+    agent.run("修改文件")
+
+    assert "当前处于 Plan Mode" in provider.requests[1][-1].content

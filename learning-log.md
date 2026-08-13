@@ -185,3 +185,11 @@
 - 配置加载结果被传入 Agent；同一规则会在 REPL 和 `run` 中生效。
 - 验证结果：Python 3.12.13 环境下 93 项测试通过；`ruff check .` 与 `git diff --check` 通过。
 - 关键理解：项目可配置不等于项目代码可执行。将配置限制为小型声明式策略，才能既提供团队级约束，又不把 Hook 变成无边界的执行入口。
+
+### 阶段 8.1：会话级 Plan Mode
+
+- REPL 默认以 Plan Mode 启动；`/plan` 显示状态，`/plan on` 回到只读探索，用户显式输入 `/plan off` 后才在当前会话关闭。
+- Plan Mode 作为最先执行的前置 Hook，拒绝 `preview_create_file`、`preview_replace` 与 `run_shell`；模型提示词不能绕过这层程序级限制。
+- 关闭 Plan Mode 不会提升既有权限：文件写入仍需预览与确认，Shell 仍须经过权限引擎与一次性确认流程。
+- 验证结果：Python 3.12.13 环境下 96 项测试通过；`ruff check .` 与 `git diff --check` 通过。
+- 关键理解：Plan Mode 的关键不是让模型“承诺不写”，而是让写入能力在执行边界不可用；退出模式是显式用户动作，但也只能恢复已有权限。

@@ -17,6 +17,7 @@ from agent_code.edits import (
 from agent_code.hook_config import load_project_hooks
 from agent_code.hooks import PreToolUseHook
 from agent_code.models import Message
+from agent_code.plan_mode import PlanMode
 from agent_code.project_memory import ProjectMemoryStore
 from agent_code.providers.anthropic import AnthropicProvider
 from agent_code.providers.base import Provider, ProviderError
@@ -216,6 +217,7 @@ def repl(
     pending_commands = PendingCommandStore()
     audit_log = EditAuditLog()
     loaded_hooks = load_project_hooks(Path.cwd())
+    plan_mode = PlanMode()
 
     for warning in loaded_hooks.warnings:
         console.print(f"[yellow]{warning}[/yellow]")
@@ -227,10 +229,11 @@ def repl(
         pending_edits=pending_edits,
         pending_commands=pending_commands,
         audit_log=audit_log,
-        pre_tool_use_hooks=loaded_hooks.pre_tool_use_hooks,
+        pre_tool_use_hooks=(plan_mode, *loaded_hooks.pre_tool_use_hooks),
     )
     console.print(
-        f"会话：{session_id}（{session_state}）。输入 /help、/session、/memory、"
+        f"会话：{session_id}（{session_state}）。Plan Mode 已开启。输入 /help、"
+        "/session、/memory、"
         "/permissions、/exit、"
         "/quit、/audit、/approve <编辑确认 ID> 或 "
         "/approve-command <命令确认 ID>。"
@@ -270,6 +273,20 @@ def repl(
 
         if prompt == "/permissions":
             console.print(_render_permission_summary())
+            continue
+
+        if prompt == "/plan":
+            console.print(plan_mode.render_status())
+            continue
+
+        if prompt == "/plan on":
+            plan_mode.enabled = True
+            console.print(plan_mode.render_status())
+            continue
+
+        if prompt == "/plan off":
+            plan_mode.enabled = False
+            console.print(plan_mode.render_status())
             continue
 
         if prompt.startswith("/memory"):
@@ -390,6 +407,7 @@ def _render_repl_help() -> str:
             "/session list：列出可恢复会话（/sessions 为兼容别名）。",
             "/memory：查看；/memory add <文本>：保存；/memory remove <ID>：删除。",
             "/permissions：显示 Shell 权限边界。",
+            "/plan：查看；/plan on：只读计划；/plan off：关闭计划模式。",
             "/audit：显示最小编辑与命令审计。",
             "/approve <ID>、/approve-command <ID>：确认已预览操作。",
             "/exit、/quit：退出 REPL。",
