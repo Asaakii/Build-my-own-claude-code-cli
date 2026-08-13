@@ -36,6 +36,7 @@ from agent_code.tools.preview_replace import PreviewReplaceTool
 from agent_code.tools.read_file import ReadFileTool
 from agent_code.tools.run_shell import RunShellTool
 from agent_code.tools.search_text import SearchTextTool
+from agent_code.worktrees import WorktreeManager
 
 app = typer.Typer(
     help="一个从零学习构建的 Claude Code 风格命令行 Agent。",
@@ -206,6 +207,7 @@ def repl(
     todo_store = TodoStore(Path.cwd())
     skill_store = SkillStore(Path.cwd())
     task_store = TaskGraphStore(Path.cwd())
+    worktree_manager = WorktreeManager(Path.cwd())
 
     try:
         if session is None:
@@ -347,6 +349,13 @@ def repl(
                 )
             except ValueError as error:
                 console.print(f"[red]任务图错误：{error}[/red]")
+            continue
+
+        if prompt.startswith("/worktree"):
+            try:
+                console.print(_handle_worktree_command(worktree_manager, prompt))
+            except ValueError as error:
+                console.print(f"[red]Worktree 错误：{error}[/red]")
             continue
 
         if prompt in {"/skills", "/skill"}:
@@ -556,6 +565,53 @@ def _render_task_graph(store: TaskGraphStore) -> str:
     )
 
 
+def _handle_worktree_command(manager: WorktreeManager, prompt: str) -> str:
+    """处理受控 Worktree 创建、检查、合并和清理命令。"""
+    parts = prompt.split()
+
+    if parts == ["/worktree"]:
+        return (
+            "Worktree 可用（仅限 Git 根目录）。"
+            if manager.is_available
+            else "Worktree 不可用：当前目录不是 Git 仓库根目录。"
+        )
+
+    if len(parts) == 3 and parts[1] == "create":
+        path = manager.create(parts[2])
+        return f"已创建隔离 Worktree：{path}"
+
+    if len(parts) == 3 and parts[1] == "inspect":
+        report = manager.inspect(parts[2])
+        return "\n".join(
+            (
+                f"任务：{report.task_id} | 分支：{report.branch}",
+                f"状态：{report.status}",
+                f"差异统计：{report.diff_stat}",
+                f"变更文件：{report.changed_paths}",
+                f"测试：{report.test_summary}",
+                report.merge_advice,
+            )
+        )
+
+    if len(parts) == 4 and parts[1] == "merge" and parts[3] == "--confirm":
+        manager.merge(parts[2], confirmed=True)
+        return "已合并任务分支；请自行审阅主工作区状态。"
+
+    if len(parts) >= 4 and parts[1] == "remove" and "--confirm" in parts[3:]:
+        manager.remove(
+            parts[2],
+            confirmed=True,
+            discard_changes="--discard-changes" in parts[3:],
+        )
+        return "已删除 Worktree，任务分支仍保留。"
+
+    raise ValueError(
+        "用法：/worktree；/worktree create <任务ID>；/worktree inspect <任务ID>；"
+        "/worktree merge <任务ID> --confirm；/worktree remove <任务ID> --confirm "
+        "[--discard-changes]"
+    )
+
+
 def _render_plan(mode: PlanMode, store: TodoStore) -> str:
     """以 Todo 状态输出可审阅、可批准的结构化计划。"""
     items = store.list_items()
@@ -598,6 +654,7 @@ def _render_repl_help() -> str:
             "/memory：查看；/memory add <文本>：保存；/memory remove <ID>：删除。",
             "/todo：查看；/todo add <内容>；/todo set <ID> <状态>。",
             "/task：查看；/task add <内容>；/task dispatch；写任务不会分派。",
+            "/worktree：创建、检查隔离任务；合并/删除必须 --confirm。",
             "/skills：列出元数据；/skill load <ID>：按需读取技能正文。",
             "/permissions：显示 Shell 权限边界。",
             "/plan：查看；/plan add <步骤>；/plan on；/plan off：关闭计划模式。",

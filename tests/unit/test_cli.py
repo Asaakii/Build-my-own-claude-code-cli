@@ -288,3 +288,16 @@ def test_repl_task_commands_keep_write_tasks_out_of_subagent_dispatch(
     assert "已添加只读任务：" in result.output
     assert "已添加主代理串行写任务：" in result.output
     assert "主代理写任务" in result.output
+
+
+def test_repl_worktree_command_degrades_outside_git_repository(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """非 Git 工作区应给出真实降级说明。"""
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["repl"], input="/worktree\n/exit\n")
+
+    assert result.exit_code == 0
+    assert "Worktree 不可用：当前目录不是 Git 仓库根目录。" in result.output
