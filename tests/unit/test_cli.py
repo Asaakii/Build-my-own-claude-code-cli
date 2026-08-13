@@ -225,10 +225,16 @@ def test_repl_plan_mode_is_on_by_default_and_can_be_explicitly_disabled(
     """Plan Mode 状态仅随当前 REPL 会话变化。"""
     monkeypatch.chdir(tmp_path)
 
-    result = runner.invoke(app, ["repl"], input="/plan\n/plan off\n/plan\n/exit\n")
+    result = runner.invoke(
+        app,
+        ["repl"],
+        input="/plan add 阅读代码\n/plan\n/plan off\n/plan\n/exit\n",
+    )
 
     assert result.exit_code == 0
     assert "Plan Mode：开启（只读探索）。" in result.output
+    assert "(pending) 阅读代码" in result.output
+    assert "确认计划后，请由用户显式输入 /plan off" in result.output
     assert "Plan Mode：关闭（仍受既有权限引擎与确认流程限制）。" in result.output
 
 

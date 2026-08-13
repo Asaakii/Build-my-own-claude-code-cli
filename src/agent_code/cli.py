@@ -278,7 +278,7 @@ def repl(
             continue
 
         if prompt == "/plan":
-            console.print(plan_mode.render_status())
+            console.print(_render_plan(plan_mode, todo_store))
             continue
 
         if prompt == "/plan on":
@@ -289,6 +289,15 @@ def repl(
         if prompt == "/plan off":
             plan_mode.enabled = False
             console.print(plan_mode.render_status())
+            continue
+
+        if prompt.startswith("/plan add "):
+            try:
+                item = todo_store.add(prompt.removeprefix("/plan add "))
+            except ValueError as error:
+                console.print(f"[red]计划错误：{error}[/red]")
+            else:
+                console.print(f"已加入计划：{item.id} | {item.text}")
             continue
 
         if prompt.startswith("/memory"):
@@ -436,6 +445,24 @@ def _handle_todo_command(store: TodoStore, prompt: str) -> str:
     )
 
 
+def _render_plan(mode: PlanMode, store: TodoStore) -> str:
+    """以 Todo 状态输出可审阅、可批准的结构化计划。"""
+    items = store.list_items()
+    lines = [mode.render_status(), "计划步骤："]
+
+    if not items:
+        lines.append("- 暂无步骤；使用 /plan add <步骤> 添加。")
+    else:
+        lines.extend(
+            f"- ({item.status}) {item.text} ({item.id})" for item in items
+        )
+
+    if mode.enabled:
+        lines.append("确认计划后，请由用户显式输入 /plan off 才能恢复写入流程。")
+
+    return "\n".join(lines)
+
+
 def _render_repl_help() -> str:
     """返回当前 REPL 最小命令集的稳定帮助文本。"""
     return "\n".join(
@@ -447,7 +474,7 @@ def _render_repl_help() -> str:
             "/memory：查看；/memory add <文本>：保存；/memory remove <ID>：删除。",
             "/todo：查看；/todo add <内容>；/todo set <ID> <状态>。",
             "/permissions：显示 Shell 权限边界。",
-            "/plan：查看；/plan on：只读计划；/plan off：关闭计划模式。",
+            "/plan：查看；/plan add <步骤>；/plan on；/plan off：关闭计划模式。",
             "/audit：显示最小编辑与命令审计。",
             "/approve <ID>、/approve-command <ID>：确认已预览操作。",
             "/exit、/quit：退出 REPL。",
