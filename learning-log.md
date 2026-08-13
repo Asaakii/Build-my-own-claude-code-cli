@@ -287,3 +287,11 @@
 - 长轮询的临时网络失败改为等待 5 秒后重试，避免一次 API 波动退出常驻服务；macOS 对 Downloads 后台访问受限时，运行时副本部署到用户 Application Support 目录并由 LaunchAgent 保持在线。
 - 验证结果：Python 3.12.13 环境下 128 项测试、Ruff 和差异检查通过；更新后的 Bot 进程已由 LaunchAgent 重新启动。
 - 关键理解：模型回答中的协议名称不是可靠的身份事实。产品身份、模型提供方、协议适配与项目作者必须由应用层明确区分，而不是让模型根据训练语料猜测。
+
+### 阶段 16.2：前台 CLI 快捷启动
+
+- `agent-code` 无参数时改为直接进入真实 Provider 的前台 REPL，使用体验与 Claude Code 的 `claude` 命令一致；`Ctrl+C`、`/exit` 或 `/quit` 会立即结束本次会话，不保留后台 Agent 进程。
+- 在用户 `~/bin` 建立 `agent-code` 快捷命令并确认 PATH 可用；原先为 Telegram 建立的自动常驻 LaunchAgent 已移除。Telegram 仅在用户显式运行 `agent-code telegram run` 时以前台方式工作，按 `Ctrl+C` 停止。
+- 修复无参数回调直接调用 Typer 命令时未初始化选项会变成 `OptionInfo` 的问题，并以实际 `agent-code → /exit` 前台流程验证。
+- 验证结果：Python 3.12.13 下 CLI 测试、Ruff、差异检查通过；真实命令已完成启动到退出的前台验证。
+- 关键理解：交互式 CLI 和消息 Bot 是不同运行模型。默认 CLI 应前台、可见、可立即终止；后台常驻应只由用户明确选择的渠道服务承担。

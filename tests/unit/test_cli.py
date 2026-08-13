@@ -11,14 +11,30 @@ runner = CliRunner()
 
 
 def test_help_displays_usage() -> None:
-    """不带参数运行时，应显示帮助信息。"""
-    result = runner.invoke(app)
+    """--help 应显示帮助而不进入交互会话。"""
+    result = runner.invoke(app, ["--help"])
 
     assert result.exit_code == 0
     assert "Usage:" in result.output
     assert "version" in result.output
     assert "run" in result.output
     assert "repl" in result.output
+
+
+def test_no_arguments_starts_real_provider_repl(monkeypatch) -> None:
+    """像 Claude Code 一样，直接运行命令应进入前台交互。"""
+    called: dict[str, str] = {}
+
+    def fake_repl(provider: str, **options) -> None:
+        assert options == {"model": None, "base_url": None, "session": None}
+        called["provider"] = provider
+
+    monkeypatch.setattr("agent_code.cli.repl", fake_repl)
+
+    result = runner.invoke(app)
+
+    assert result.exit_code == 0
+    assert called == {"provider": "anthropic"}
 
 
 def test_version_displays_current_version() -> None:

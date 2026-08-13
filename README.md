@@ -24,11 +24,13 @@ python3.12 -m venv .venv
 
 # 不需要密钥、不联网的演示
 .venv/bin/agent-code run "请使用 echo 工具回答：你好"
-.venv/bin/agent-code repl
+.venv/bin/agent-code repl --provider demo
 ```
 
-在 REPL 中先输入 `/help` 查看命令。默认启用 Plan Mode；输入 `/plan off` 只能
-退出只读探索，不能绕过文件编辑和 Shell 的确认边界。
+安装并配置真实模型后，直接运行 `agent-code` 即进入前台 DeepSeek 对话，行为类似
+`claude`：按 `Ctrl+C`、`/exit` 或 `/quit` 即退出，不会留在后台。需要不联网演示时用
+`agent-code repl --provider demo`。在 REPL 中先输入 `/help` 查看命令；默认启用
+Plan Mode，输入 `/plan off` 只能退出只读探索，不能绕过文件编辑和 Shell 的确认边界。
 
 ## 真实模型配置
 
@@ -61,7 +63,7 @@ Telegram 用户 ID。不要将这些值提交到 Git。
 # 验证 Token，不发送消息也不启动轮询
 .venv/bin/agent-code telegram status
 
-# 持续运行 Bot；按 Ctrl+C 停止
+# 持续运行 Bot；按 Ctrl+C 停止（不会自动常驻）
 .venv/bin/agent-code telegram run
 ```
 

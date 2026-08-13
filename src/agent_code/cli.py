@@ -48,7 +48,7 @@ from agent_code.tools.search_text import SearchTextTool
 from agent_code.worktrees import WorktreeManager
 
 app = typer.Typer(
-    help="一个从零学习构建的 Claude Code 风格命令行 Agent。",
+    help="一个从零学习构建的 Claude Code 风格命令行 Agent；直接运行进入对话。",
     no_args_is_help=False,
     add_completion=False,
 )
@@ -149,9 +149,14 @@ def create_provider(
 
 @app.callback(invoke_without_command=True)
 def app_callback(context: typer.Context) -> None:
-    """处理未提供子命令时的默认行为。"""
+    """未提供子命令时启动真实模型前台 REPL。"""
     if context.invoked_subcommand is None:
-        console.print(context.get_help())
+        repl(
+            provider="anthropic",
+            model=None,
+            base_url=None,
+            session=None,
+        )
 
 
 @app.command()
