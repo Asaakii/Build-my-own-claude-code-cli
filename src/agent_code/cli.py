@@ -23,6 +23,7 @@ from agent_code.tools.list_dir import ListDirectoryTool
 from agent_code.tools.preview_create_file import PreviewCreateFileTool
 from agent_code.tools.preview_replace import PreviewReplaceTool
 from agent_code.tools.read_file import ReadFileTool
+from agent_code.tools.run_shell import RunShellTool
 from agent_code.tools.search_text import SearchTextTool
 
 app = typer.Typer(
@@ -60,6 +61,7 @@ def create_agent(
             ListDirectoryTool(workspace_root=Path.cwd()),
             GlobTool(workspace_root=Path.cwd()),
             SearchTextTool(workspace_root=Path.cwd()),
+            RunShellTool(workspace_root=Path.cwd()),
             PreviewReplaceTool(
                 workspace_root=Path.cwd(),
                 pending_edits=pending_edits,
