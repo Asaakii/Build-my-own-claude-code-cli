@@ -46,9 +46,29 @@ export ANTHROPIC_BASE_URL='可选的兼容端点'
 .venv/bin/agent-code smoke
 ```
 
-`.env` 不会被程序自动读取，也绝不能提交。并非所有“OpenAI 兼容”服务都兼容
-Anthropic Messages API；若服务仅提供 OpenAI 协议，不能只改 Base URL 就假定可用，
+程序会以受限文本解析方式自动读取当前工作区 `.env`；它不会执行其中的 Shell 内容，
+而且终端中显式设置的变量优先。`.env` 绝不能提交。并非所有“OpenAI 兼容”服务都
+兼容 Anthropic Messages API；若服务仅提供 OpenAI 协议，不能只改 Base URL 就假定可用，
 需要另写 Provider 适配层。
+
+## Telegram 私聊渠道
+
+本项目支持受限的 Telegram long polling。`.env` 中必须配置
+`TELEGRAM_BOT_TOKEN` 与 `TELEGRAM_ALLOWED_USER_ID`；后者是唯一允许使用 Bot 的
+Telegram 用户 ID。不要将这些值提交到 Git。
+
+```bash
+# 验证 Token，不发送消息也不启动轮询
+.venv/bin/agent-code telegram status
+
+# 持续运行 Bot；按 Ctrl+C 停止
+.venv/bin/agent-code telegram run
+```
+
+Bot 只处理白名单用户的私聊文本，忽略群组、媒体和其他用户。每位白名单用户的对话
+保存在本地 `.agent-code/sessions/telegram-<用户ID>.jsonl`。外部渠道始终启用
+Plan Mode：读取、搜索和问答可用；文件编辑、命令执行、确认 ID、`/plan off` 等操作
+不能通过 Telegram 绕过本地终端的确认流程。
 
 ## 功能与安全边界
 
@@ -63,6 +83,8 @@ Anthropic Messages API；若服务仅提供 OpenAI 协议，不能只改 Base UR
 - Worktree 创建、合并和清理均需要明确命令与确认标志，不会自动提交或推送。
 - MCP 第一版只支持本地 stdio。发现到 MCP 工具不等于可执行：外部工具默认需显式
   确认，schema 按需加载，输出有大小上限。
+- Telegram 仅为白名单私聊提供只读问答，且会保存脱敏会话；运行进程本身需要保持
+  在本机终端中，停止进程后 Bot 不再响应。
 
 更完整的安全回归项见 [docs/security-checklist.md](./docs/security-checklist.md)。
 

@@ -272,3 +272,11 @@
 - 验收命令不会提供文件或 Shell 工具，避免为一次连通性检查扩大副作用范围；若模型不调用工具或最终文本不精确匹配，命令以失败退出。
 - 验证结果：命令的 Provider 限制、工具回合与最终结果由不联网协议替身测试覆盖；另以 HermesLite 的 `LLM_API_KEY`、`LLM_MODEL` 和 DeepSeek Anthropic 兼容地址临时映射运行，真实服务返回 `SMOKE_OK`，并观察到本地 `echo(smoke-ok)` 工具结果。
 - 关键理解：真实冒烟应该是明确、可重复且能力最小的验收流程，而不是拿完整 Agent 在工作区上做不可预测的试运行。
+
+### 阶段 16：受限 Telegram 私聊渠道
+
+- 将 HermesLite 的 DeepSeek 模型信息和 Telegram 白名单配置迁移到当前项目的本地 `.env`；配置文件权限为 600，且被 Git 忽略。迁移过程只提取所需字段，不复制 HermesLite 的其他运行配置。
+- 新增 `agent-code telegram status` 与 `agent-code telegram run`。标准库 HTTP 客户端仅调用 Telegram 的 `getMe`、`getUpdates` 和 `sendMessage`；offset 持久化在 `.agent-code/`，重启不会重复消耗旧消息。
+- Telegram 只处理配置用户的私聊文本，按用户绑定会话；外部服务强制 Plan Mode，文件写入和 Shell 操作不能通过聊天绕过本地确认。
+- 验证结果：Bot 身份接口成功返回 `@Asaakii_OpenClaw_bot`；Python 3.12.13 下完整自动化测试、Ruff 和差异检查通过。Bot Token、用户 ID、模型 Key 均未进入 Git 或公开学习日志。
+- 关键理解：外部消息渠道不应等价于远程终端。白名单、私聊限制、offset 去重、会话隔离和程序级只读策略必须共同存在。

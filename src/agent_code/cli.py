@@ -26,6 +26,14 @@ from agent_code.sessions import SessionStore
 from agent_code.skills import SkillStore
 from agent_code.subagents import ReadOnlySubagentRunner
 from agent_code.task_graph import TaskCoordinator, TaskGraphStore
+from agent_code.telegram import (
+    TelegramAgentService,
+    TelegramChannel,
+    TelegramError,
+    TelegramHttpApi,
+    TelegramOffsetStore,
+    load_telegram_config,
+)
 from agent_code.todos import TodoStatus, TodoStore
 from agent_code.tools.check_command import CheckCommandTool
 from agent_code.tools.echo import EchoTool
@@ -43,6 +51,8 @@ app = typer.Typer(
     no_args_is_help=False,
     add_completion=False,
 )
+telegram_app = typer.Typer(help="运行受限的 Telegram 私聊渠道。")
+app.add_typer(telegram_app, name="telegram")
 
 console = Console()
 SMOKE_PROMPT = (
@@ -199,6 +209,79 @@ def smoke(
         raise typer.Exit(code=1)
 
     console.print("真实模型冒烟通过：观察到 echo 工具调用与最终 SMOKE_OK。")
+
+
+@telegram_app.command("status")
+def telegram_status() -> None:
+    """验证 Bot Token 可用，但不会启动长轮询或发送消息。"""
+    try:
+        config = load_telegram_config()
+        profile = TelegramHttpApi(config).get_me()
+    except (ConfigurationError, TelegramError) as error:
+        console.print(f"[red]Telegram 配置或连接错误：{error}[/red]")
+        raise typer.Exit(code=2) from error
+
+    username = profile.get("username")
+    label = f"@{username}" if isinstance(username, str) and username else "无用户名"
+    console.print(f"Telegram Bot 已连接：{label}。仅允许已配置用户的私聊。")
+
+
+@telegram_app.command("run")
+def telegram_run(
+    provider: str = typer.Option(
+        "anthropic",
+        "--provider",
+        help="Telegram 渠道仅允许 anthropic Provider。",
+    ),
+    model: str | None = typer.Option(
+        None,
+        "--model",
+        help="覆盖 AGENT_CODE_MODEL 环境变量。",
+    ),
+    base_url: str | None = typer.Option(
+        None,
+        "--base-url",
+        help="覆盖 ANTHROPIC_BASE_URL 环境变量。",
+    ),
+) -> None:
+    """启动只读、白名单 Telegram 私聊渠道；按 Ctrl+C 停止。"""
+    if provider != "anthropic":
+        console.print("[red]Telegram 渠道仅支持 --provider anthropic。[/red]")
+        raise typer.Exit(code=2)
+
+    try:
+        config = load_telegram_config()
+    except (ConfigurationError, TelegramError) as error:
+        console.print(f"[red]Telegram 配置错误：{error}[/red]")
+        raise typer.Exit(code=2) from error
+
+    agent = _create_agent_or_exit(
+        provider_name=provider,
+        model=model,
+        base_url=base_url,
+        pre_tool_use_hooks=(PlanMode(),),
+    )
+    service = TelegramAgentService(
+        agent=agent,
+        session_store=SessionStore(Path.cwd()),
+        memory_store=ProjectMemoryStore(Path.cwd()),
+    )
+    channel = TelegramChannel(
+        config=config,
+        api=TelegramHttpApi(config),
+        service=service,
+        offset_store=TelegramOffsetStore(Path.cwd()),
+    )
+    console.print("Telegram 渠道已启动：仅处理白名单私聊，文件写入和 Shell 被禁用。")
+
+    try:
+        while True:
+            channel.poll_once()
+    except KeyboardInterrupt:
+        console.print("Telegram 渠道已停止。")
+    except TelegramError as error:
+        console.print(f"[red]Telegram 渠道已停止：{error}[/red]")
+        raise typer.Exit(code=1) from error
 
 
 @app.command()

@@ -61,6 +61,12 @@ class SessionStore:
         self._path_for(session_id).touch(exist_ok=False)
         return session_id
 
+    def ensure(self, session_id: str) -> None:
+        """确保一个由受控外部渠道派生的会话存在。"""
+        path = self._path_for(session_id)
+        self._sessions_directory.mkdir(parents=True, exist_ok=True)
+        path.touch(exist_ok=True)
+
     def append_messages(
         self,
         session_id: str,

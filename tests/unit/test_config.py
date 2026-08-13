@@ -39,9 +39,11 @@ def test_explicit_options_override_environment(
 
 
 def test_config_rejects_missing_required_values(
+    tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """缺少密钥和模型名时，应指出具体缺失项。"""
+    monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
     monkeypatch.delenv("AGENT_CODE_MODEL", raising=False)
@@ -51,3 +53,27 @@ def test_config_rejects_missing_required_values(
         match="ANTHROPIC_API_KEY.*AGENT_CODE_MODEL",
     ):
         load_anthropic_config()
+
+
+def test_config_reads_local_dotenv_without_executing_shell_syntax(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`.env` 仅被解析为键值，不会执行其中的 Shell 内容。"""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("AGENT_CODE_MODEL", raising=False)
+    (tmp_path / ".env").write_text(
+        "ANTHROPIC_API_KEY=dotenv-key\n"
+        "AGENT_CODE_MODEL=dotenv-model\n"
+        "ANTHROPIC_BASE_URL=https://example.com/anthropic\n"
+        "UNSAFE=$(touch should-not-run)\n",
+        encoding="utf-8",
+    )
+
+    config = load_anthropic_config()
+
+    assert config.api_key == "dotenv-key"
+    assert config.model == "dotenv-model"
+    assert config.base_url == "https://example.com/anthropic"
+    assert not (tmp_path / "should-not-run").exists()

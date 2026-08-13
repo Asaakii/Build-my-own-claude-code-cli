@@ -47,9 +47,11 @@ def test_repl_accepts_prompt_and_exit_command() -> None:
 
 
 def test_anthropic_provider_requires_configuration(
+    tmp_path,
     monkeypatch,
 ) -> None:
     """未配置真实 Provider 时，不应联网且应说明缺失项。"""
+    monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
     monkeypatch.delenv("AGENT_CODE_MODEL", raising=False)
@@ -77,9 +79,11 @@ def test_unknown_provider_is_rejected() -> None:
 
 
 def test_status_reports_missing_anthropic_configuration(
+    tmp_path,
     monkeypatch,
 ) -> None:
     """未配置真实 Provider 时，status 应说明缺失项。"""
+    monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
     monkeypatch.delenv("AGENT_CODE_MODEL", raising=False)
