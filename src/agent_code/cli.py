@@ -5,6 +5,8 @@ from time import sleep
 
 import typer
 from rich.console import Console
+from rich.live import Live
+from rich.markdown import Markdown
 
 from agent_code import __version__
 from agent_code.agent import Agent, AgentResult
@@ -324,8 +326,7 @@ def run(
         base_url=base_url,
         pre_tool_use_hooks=loaded_hooks.pre_tool_use_hooks,
     )
-    result = _run_agent_or_exit(agent, prompt)
-    console.print(result.text)
+    _run_streamed_agent_or_exit(agent, prompt)
 
 
 @app.command()
@@ -587,8 +588,11 @@ def repl(
         if not prompt:
             continue
 
+        console.print("[bold cyan]agent>[/bold cyan]")
+
         try:
-            result = agent.run(
+            result = _render_agent_stream(
+                agent,
                 prompt,
                 history=history,
                 project_memory=memory_store.render_context(),
@@ -608,9 +612,6 @@ def repl(
             history = session_store.load_messages(session_id)
         except ValueError as error:
             console.print(f"[yellow]会话未保存：{error}[/yellow]")
-
-        console.print(f"agent> {result.text}")
-
 
 def _handle_memory_command(store: ProjectMemoryStore, prompt: str) -> str:
     """处理项目记忆的显式添加、查看和删除命令。"""
@@ -942,6 +943,61 @@ def _run_agent_or_exit(agent: Agent, prompt: str) -> AgentResult:
     except ProviderError as error:
         console.print(f"[red]模型服务错误：{error}[/red]")
         raise typer.Exit(code=1) from error
+
+
+def _run_streamed_agent_or_exit(agent: Agent, prompt: str) -> AgentResult:
+    """运行一次 Agent，以流式 Markdown 呈现输出并转换服务错误。"""
+    try:
+        return _render_agent_stream(agent, prompt)
+    except ProviderError as error:
+        console.print(f"[red]模型服务错误：{error}[/red]")
+        raise typer.Exit(code=1) from error
+
+
+def _render_agent_stream(
+    agent: Agent,
+    prompt: str,
+    *,
+    history: tuple[Message, ...] = (),
+    project_memory: str = "",
+) -> AgentResult:
+    """在支持的终端中逐段刷新 Markdown，并返回完整 Agent 结果。"""
+    text_parts: list[str] = []
+    result: AgentResult | None = None
+    live: Live | None = None
+
+    try:
+        for event in agent.run_stream(
+            prompt,
+            history=history,
+            project_memory=project_memory,
+        ):
+            if event.text_delta:
+                text_parts.append(event.text_delta)
+
+                if live is None:
+                    live = Live(
+                        Markdown(""),
+                        console=console,
+                        refresh_per_second=12,
+                    )
+                    live.start()
+
+                live.update(Markdown("".join(text_parts)))
+
+            if event.result is not None:
+                result = event.result
+    finally:
+        if live is not None:
+            live.stop()
+
+    if result is None:
+        raise RuntimeError("Agent 未返回最终结果。")
+
+    if live is None:
+        console.print(Markdown(result.text))
+
+    return result
 
 
 def _is_successful_smoke_result(result: AgentResult) -> bool:

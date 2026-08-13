@@ -11,8 +11,8 @@ from agent_code.hooks import (
     PreToolUseEvent,
     PreToolUseHook,
 )
-from agent_code.models import Message, ToolCall
-from agent_code.providers.base import Provider
+from agent_code.models import Message, ModelResponse, ToolCall
+from agent_code.providers.base import Provider, ProviderError, ProviderStreamEvent
 from agent_code.tools.base import Tool
 
 
@@ -23,6 +23,14 @@ class AgentResult:
     text: str
     messages: tuple[Message, ...]
     context_report: ContextReport
+
+
+@dataclass(frozen=True)
+class AgentStreamEvent:
+    """Agent 向界面发出的文本片段或一次运行的最终结果。"""
+
+    text_delta: str = ""
+    result: AgentResult | None = None
 
 
 class Agent:
@@ -53,7 +61,24 @@ class Agent:
         history: Sequence[Message] = (),
         project_memory: str = "",
     ) -> AgentResult:
-        """执行一次“项目记忆 → 历史 → 用户输入 → 模型”的循环。"""
+        """执行一次循环，并在不需要界面流式显示时收集最终结果。"""
+        for event in self.run_stream(
+            prompt,
+            history=history,
+            project_memory=project_memory,
+        ):
+            if event.result is not None:
+                return event.result
+
+        raise RuntimeError("Agent 未返回最终结果。")
+
+    def run_stream(
+        self,
+        prompt: str,
+        history: Sequence[Message] = (),
+        project_memory: str = "",
+    ) -> Iterable[AgentStreamEvent]:
+        """执行循环并在模型生成时立即产出文本片段。"""
         if any(message.role not in {"user", "assistant"} for message in history):
             raise ValueError("恢复的会话历史只允许 user 或 assistant 消息。")
 
@@ -70,10 +95,17 @@ class Agent:
 
         for _ in range(self._max_turns):
             context_manager.record_request(messages)
-            response = self._provider.respond(
-                messages,
-                tools=tuple(self._tools.values()),
-            )
+            response: ModelResponse | None = None
+
+            for event in self._stream_provider_response(messages):
+                if event.response is not None:
+                    response = event.response
+                elif event.text_delta:
+                    yield AgentStreamEvent(text_delta=event.text_delta)
+
+            if response is None:
+                raise ProviderError("模型服务未返回完整响应。")
+
             messages.append(
                 Message(
                     role="assistant",
@@ -84,11 +116,14 @@ class Agent:
             context_manager.record_model_output(response.text)
 
             if not response.tool_calls:
-                return AgentResult(
-                    text=response.text,
-                    messages=tuple(messages[project_memory_message_count:]),
-                    context_report=context_manager.report(),
+                yield AgentStreamEvent(
+                    result=AgentResult(
+                        text=response.text,
+                        messages=tuple(messages[project_memory_message_count:]),
+                        context_report=context_manager.report(),
+                    )
                 )
+                return
 
             for tool_call in response.tool_calls:
                 messages.append(
@@ -103,6 +138,24 @@ class Agent:
 
         raise RuntimeError(
             f"Agent 在 {self._max_turns} 轮后仍未结束，已停止继续执行。"
+        )
+
+    def _stream_provider_response(
+        self,
+        messages: Sequence[Message],
+    ) -> Iterable[ProviderStreamEvent]:
+        """优先使用 Provider 的流式能力；其他 Provider 保持原有同步行为。"""
+        stream_respond = getattr(self._provider, "stream_respond", None)
+
+        if callable(stream_respond):
+            yield from stream_respond(messages, tools=tuple(self._tools.values()))
+            return
+
+        yield ProviderStreamEvent(
+            response=self._provider.respond(
+                messages,
+                tools=tuple(self._tools.values()),
+            )
         )
 
     def _execute_tool(self, tool_call: ToolCall) -> str:

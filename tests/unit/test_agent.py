@@ -7,6 +7,7 @@ from agent_code.hook_config import DenyToolsHook
 from agent_code.hooks import PostToolUseEvent, PreToolUseDecision, PreToolUseEvent
 from agent_code.models import Message, ModelResponse, ToolCall
 from agent_code.plan_mode import PlanMode
+from agent_code.providers.base import ProviderStreamEvent
 from agent_code.providers.mock import MockProvider
 from agent_code.tools.echo import EchoTool
 
@@ -23,6 +24,55 @@ def test_agent_returns_text_when_model_does_not_call_tools() -> None:
         Message(role="user", content="打个招呼"),
         Message(role="assistant", content="你好，世界！"),
     )
+
+
+def test_agent_yields_provider_text_before_the_final_result() -> None:
+    """支持流的 Provider 应让终端在请求结束前拿到文本片段。"""
+
+    class StreamingProvider:
+        def stream_respond(self, messages, tools=()):
+            del messages, tools
+            yield ProviderStreamEvent(text_delta="**你好")
+            yield ProviderStreamEvent(text_delta="，世界！**")
+            yield ProviderStreamEvent(response=ModelResponse(text="**你好，世界！**"))
+
+    agent = Agent(provider=StreamingProvider(), tools=[])
+
+    events = list(agent.run_stream("打个招呼"))
+
+    assert [event.text_delta for event in events[:-1]] == ["**你好", "，世界！**"]
+    assert events[-1].result is not None
+    assert events[-1].result.text == "**你好，世界！**"
+
+
+def test_agent_waits_for_stream_completion_before_executing_a_tool() -> None:
+    """流中的半截 JSON 不应被当成工具参数执行。"""
+    tool_call = ToolCall(id="call-1", name="echo", arguments={"text": "完整参数"})
+
+    class StreamingProvider:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def stream_respond(self, messages, tools=()):
+            del messages, tools
+            self.calls += 1
+            if self.calls == 1:
+                yield ProviderStreamEvent(text_delta="正在准备工具。")
+                yield ProviderStreamEvent(
+                    response=ModelResponse(tool_calls=(tool_call,))
+                )
+                return
+
+            yield ProviderStreamEvent(response=ModelResponse(text="已完成。"))
+
+    provider = StreamingProvider()
+    agent = Agent(provider=provider, tools=[EchoTool()])
+
+    events = list(agent.run_stream("调用 echo"))
+
+    assert events[-1].result is not None
+    assert events[-1].result.text == "已完成。"
+    assert provider.calls == 2
 
 
 def test_agent_executes_tool_and_returns_follow_up_response() -> None:

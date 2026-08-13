@@ -139,6 +139,62 @@ def test_provider_converts_tool_result_to_user_content_block() -> None:
     ]
 
 
+def test_provider_streams_text_and_collects_complete_tool_arguments() -> None:
+    """流式文本应立即向上游发出，工具参数只在收齐后作为最终响应返回。"""
+    stream_events = [
+        SimpleNamespace(
+            type="content_block_start",
+            index=0,
+            content_block=SimpleNamespace(type="text"),
+        ),
+        SimpleNamespace(
+            type="content_block_delta",
+            index=0,
+            delta=SimpleNamespace(type="text_delta", text="先输出"),
+        ),
+        SimpleNamespace(
+            type="content_block_start",
+            index=1,
+            content_block=SimpleNamespace(
+                type="tool_use",
+                id="tool-1",
+                name="echo",
+            ),
+        ),
+        SimpleNamespace(
+            type="content_block_delta",
+            index=1,
+            delta=SimpleNamespace(type="input_json_delta", partial_json='{"text":'),
+        ),
+        SimpleNamespace(
+            type="content_block_delta",
+            index=1,
+            delta=SimpleNamespace(type="input_json_delta", partial_json='"你好"}'),
+        ),
+    ]
+    client = FakeClient(stream_events)
+    provider = AnthropicProvider(
+        api_key="test-key",
+        model="test-model",
+        client=client,
+    )
+
+    events = list(
+        provider.stream_respond(
+            [Message(role="user", content="请调用 echo")],
+            tools=[EchoTool()],
+        )
+    )
+
+    assert [event.text_delta for event in events[:-1]] == ["先输出"]
+    assert events[-1].response is not None
+    assert events[-1].response.text == "先输出"
+    assert events[-1].response.tool_calls == (
+        ToolCall(id="tool-1", name="echo", arguments={"text": "你好"}),
+    )
+    assert client.messages.calls[0]["stream"] is True
+
+
 
 
 

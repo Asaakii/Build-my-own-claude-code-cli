@@ -31,6 +31,8 @@ python3.12 -m venv .venv
 `claude`：按 `Ctrl+C`、`/exit` 或 `/quit` 即退出，不会留在后台。需要不联网演示时用
 `agent-code repl --provider demo`。在 REPL 中先输入 `/help` 查看命令；默认启用
 Plan Mode，输入 `/plan off` 只能退出只读探索，不能绕过文件编辑和 Shell 的确认边界。
+真实 Provider 的普通文本会逐段显示，最终回答使用终端 Markdown 渲染（例如 `**粗体**`、
+标题、列表和代码块不会原样显示标记）。工具调用仍会等模型完整返回参数后才执行。
 
 ## 真实模型配置
 
@@ -71,6 +73,9 @@ Bot 只处理白名单用户的私聊文本，忽略群组、媒体和其他用�
 保存在本地 `.agent-code/sessions/telegram-<用户ID>.jsonl`。外部渠道始终启用
 Plan Mode：读取、搜索和问答可用；文件编辑、命令执行、确认 ID、`/plan off` 等操作
 不能通过 Telegram 绕过本地终端的确认流程。
+
+Telegram Bot 目前在模型完整回答后才发送一条消息，不支持逐段刷新；这是该渠道的现有
+交付方式，和本地 CLI 的流式终端体验不同。
 
 身份问题由程序给出固定事实回答：这是用户开发的 `agent-code` Bot，底层使用
 DeepSeek；`Anthropic` 仅指 Messages API 兼容协议，不能被误解为模型身份或开发者。
@@ -137,7 +142,7 @@ HermesLite 的 `LLM_API_KEY` 和 `LLM_MODEL` 可以复用，但它的
 ## 已知限制与下一步
 
 - 没有无限 `/loop`：刻意避免缺少停止/预算控制的后台循环。
-- REPL 是基础终端交互，不提供复杂的全屏编辑、流式输出或跨进程取消。
+- REPL 是基础终端交互，不提供复杂的全屏编辑或跨进程取消。
 - 真实模型只支持 Anthropic Messages API 兼容端点；未实现 OpenAI Provider、重试、
   多模型路由或自动成本控制。
 - MCP 不含 OAuth、远程服务发现、云连接器、组织级策略或运行时注册表。

@@ -295,3 +295,12 @@
 - 修复无参数回调直接调用 Typer 命令时未初始化选项会变成 `OptionInfo` 的问题，并以实际 `agent-code → /exit` 前台流程验证。
 - 验证结果：Python 3.12.13 下 CLI 测试、Ruff、差异检查通过；真实命令已完成启动到退出的前台验证。
 - 关键理解：交互式 CLI 和消息 Bot 是不同运行模型。默认 CLI 应前台、可见、可立即终止；后台常驻应只由用户明确选择的渠道服务承担。
+
+### 阶段 17：终端 Markdown 与流式回答
+
+- 为 Anthropic Messages API 兼容 Provider 增加 `stream=True` 事件解析：`text_delta` 立即上送界面，最终再组装文本与完整 `tool_use` 参数。
+- Agent Loop 对不支持流的 Provider 自动回退到原有 `respond` 路径；对支持流的 Provider 则在生成过程中发出片段，最终仍返回同一份可保存的 `AgentResult`。
+- CLI 的 `run` 和 REPL 通过 Rich `Markdown` 与实时刷新显示回答；因此 Markdown 语法不再作为普通字符展示。
+- 安全边界保持不变：工具参数只在流结束、JSON 完整解析之后才交给 Agent 执行；Telegram 当前仍在完整响应后一次性发送消息。
+- 验证结果：Python 3.12.13 下 `ruff check .`、`git diff --check` 与 133 项完整自动化测试通过；真实 DeepSeek Anthropic 兼容接口返回了带标题、列表和粗体的回答，终端已渲染为 Markdown，而非显示 `##` 或 `**` 标记。独立时序验证中，首个文本片段在 1,105 ms 到达，完整响应在 1,232 ms 到达，确认文本确实先于完整响应可用。
+- 关键理解：流式输出是界面体验，不是放宽工具执行时机。模型的自然语言可以逐段显示，但副作用必须继续等待结构化调用完整落定。

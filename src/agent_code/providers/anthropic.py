@@ -1,6 +1,7 @@
 """Anthropic Messages API 与兼容端点的 Provider。"""
 
-from collections.abc import Sequence
+import json
+from collections.abc import Iterator, Sequence
 from typing import Any
 
 from anthropic import (
@@ -14,7 +15,7 @@ from anthropic import (
 )
 
 from agent_code.models import Message, ModelResponse, ToolCall
-from agent_code.providers.base import ProviderError
+from agent_code.providers.base import ProviderError, ProviderStreamEvent
 from agent_code.tools.base import Tool
 
 
@@ -117,6 +118,110 @@ class AnthropicProvider:
         return ModelResponse(
             text="".join(text_parts),
             tool_calls=tuple(tool_calls),
+        )
+
+    def stream_respond(
+        self,
+        messages: Sequence[Message],
+        tools: Sequence[Tool] = (),
+    ) -> Iterator[ProviderStreamEvent]:
+        """流式输出文本；工具调用只在参数完整收齐后才作为最终响应返回。"""
+        text_parts: list[str] = []
+        tool_inputs: dict[int, dict[str, Any]] = {}
+
+        try:
+            events = self._client.messages.create(
+                model=self._model,
+                max_tokens=self._max_tokens,
+                messages=self._to_api_messages(messages),
+                tools=[
+                    {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "input_schema": tool.input_schema,
+                    }
+                    for tool in tools
+                ],
+                stream=True,
+            )
+
+            for event in events:
+                event_type = getattr(event, "type", "")
+
+                if event_type == "content_block_start":
+                    block = getattr(event, "content_block", None)
+
+                    if getattr(block, "type", "") == "tool_use":
+                        tool_inputs[getattr(event, "index", 0)] = {
+                            "id": getattr(block, "id", ""),
+                            "name": getattr(block, "name", ""),
+                            "input_json": "",
+                        }
+                    continue
+
+                if event_type != "content_block_delta":
+                    continue
+
+                delta = getattr(event, "delta", None)
+                delta_type = getattr(delta, "type", "")
+
+                if delta_type == "text_delta":
+                    text = getattr(delta, "text", "")
+                    text_parts.append(text)
+                    yield ProviderStreamEvent(text_delta=text)
+                elif delta_type == "input_json_delta":
+                    tool = tool_inputs.get(getattr(event, "index", 0))
+                    if tool is not None:
+                        tool["input_json"] += getattr(delta, "partial_json", "")
+        except AuthenticationError as error:
+            raise ProviderError(
+                "模型服务认证失败。请检查本机密钥和 Base URL 配置。"
+            ) from error
+        except RateLimitError as error:
+            raise ProviderError(
+                "模型服务触发限流。请稍后再试，或检查账户额度。"
+            ) from error
+        except APITimeoutError as error:
+            raise ProviderError(
+                "模型服务请求超时。请检查网络后重试。"
+            ) from error
+        except APIConnectionError as error:
+            raise ProviderError(
+                "无法连接模型服务。请检查网络和 Base URL。"
+            ) from error
+        except APIStatusError as error:
+            raise ProviderError(
+                "模型服务返回异常状态。请稍后重试或检查服务配置。"
+            ) from error
+        except APIError as error:
+            raise ProviderError(
+                "模型服务请求失败。请检查配置后重试。"
+            ) from error
+
+        tool_calls: list[ToolCall] = []
+
+        for tool in tool_inputs.values():
+            try:
+                arguments = json.loads(tool["input_json"] or "{}")
+            except json.JSONDecodeError as error:
+                raise ProviderError("模型服务返回了无效的工具参数。") from error
+
+            if not isinstance(arguments, dict):
+                raise ProviderError("模型服务返回了无效的工具参数。")
+
+            tool_calls.append(
+                ToolCall(
+                    id=tool["id"],
+                    name=tool["name"],
+                    arguments=arguments,
+                )
+            )
+
+        yield ProviderStreamEvent(
+            response=ModelResponse(
+                text="".join(text_parts),
+                tool_calls=tuple(tool_calls),
+            )
         )
 
     @staticmethod

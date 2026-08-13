@@ -53,6 +53,26 @@ def test_run_executes_demo_agent() -> None:
     assert "演示完成：你好" in result.output
 
 
+def test_run_renders_markdown_instead_of_printing_syntax(monkeypatch) -> None:
+    """Markdown 回答在终端中不应把强调标记原样暴露给用户。"""
+
+    class MarkdownProvider:
+        def respond(self, messages, tools=()):
+            del messages, tools
+            return ModelResponse(text="**这是粗体文本**")
+
+    monkeypatch.setattr(
+        "agent_code.cli.create_provider",
+        lambda **_: MarkdownProvider(),
+    )
+
+    result = runner.invoke(app, ["run", "测试"])
+
+    assert result.exit_code == 0
+    assert "这是粗体文本" in result.output
+    assert "**这是粗体文本**" not in result.output
+
+
 def test_repl_accepts_prompt_and_exit_command() -> None:
     """REPL 应处理输入，并在 /exit 后正常退出。"""
     result = runner.invoke(app, ["repl"], input="你好\n/exit\n")
