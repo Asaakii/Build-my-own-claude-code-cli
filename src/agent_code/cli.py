@@ -214,7 +214,8 @@ def repl(
         audit_log=audit_log,
     )
     console.print(
-        f"会话：{session_id}（{session_state}）。输入 /sessions、/memory、/exit、"
+        f"会话：{session_id}（{session_state}）。输入 /help、/session、/memory、"
+        "/permissions、/exit、"
         "/quit、/audit、/approve <编辑确认 ID> 或 "
         "/approve-command <命令确认 ID>。"
     )
@@ -233,17 +234,26 @@ def repl(
             console.print("已退出 REPL。")
             break
 
-        if prompt == "/sessions":
-            for session_info in session_store.list_sessions():
-                corruption_note = (
-                    f"，损坏行：{session_info.corrupted_line_count}"
-                    if session_info.corrupted_line_count
-                    else ""
-                )
-                console.print(
-                    f"{session_info.session_id} | "
-                    f"对话消息：{session_info.message_count}{corruption_note}"
-                )
+        if prompt == "/help":
+            console.print(_render_repl_help())
+            continue
+
+        if prompt == "/clear":
+            session_id = session_store.create()
+            history = ()
+            console.print(f"已清空当前对话并新建会话：{session_id}")
+            continue
+
+        if prompt == "/session":
+            console.print(f"当前会话：{session_id} | 对话消息：{len(history)}")
+            continue
+
+        if prompt in {"/sessions", "/session list"}:
+            console.print(_render_session_list(session_store))
+            continue
+
+        if prompt == "/permissions":
+            console.print(_render_permission_summary())
             continue
 
         if prompt.startswith("/memory"):
@@ -351,6 +361,59 @@ def _handle_memory_command(store: ProjectMemoryStore, prompt: str) -> str:
 
     raise ValueError(
         "用法：/memory；/memory add <长期约定>；/memory remove <记忆 ID>"
+    )
+
+
+def _render_repl_help() -> str:
+    """返回当前 REPL 最小命令集的稳定帮助文本。"""
+    return "\n".join(
+        (
+            "/help：显示帮助。",
+            "/clear：新建空会话，不删除历史会话。",
+            "/session：显示当前会话。",
+            "/session list：列出可恢复会话（/sessions 为兼容别名）。",
+            "/memory：查看；/memory add <文本>：保存；/memory remove <ID>：删除。",
+            "/permissions：显示 Shell 权限边界。",
+            "/audit：显示最小编辑与命令审计。",
+            "/approve <ID>、/approve-command <ID>：确认已预览操作。",
+            "/exit、/quit：退出 REPL。",
+        )
+    )
+
+
+def _render_session_list(store: SessionStore) -> str:
+    """将会话摘要呈现为不包含消息内容的文本。"""
+    sessions = store.list_sessions()
+
+    if not sessions:
+        return "当前工作区没有可恢复会话。"
+
+    lines: list[str] = []
+
+    for session_info in sessions:
+        corruption_note = (
+            f"，损坏行：{session_info.corrupted_line_count}"
+            if session_info.corrupted_line_count
+            else ""
+        )
+        lines.append(
+            f"{session_info.session_id} | "
+            f"对话消息：{session_info.message_count}{corruption_note}"
+        )
+
+    return "\n".join(lines)
+
+
+def _render_permission_summary() -> str:
+    """说明程序级 Shell 权限边界，而不展示或执行任何命令。"""
+    return "\n".join(
+        (
+            "Shell 权限边界：",
+            "- 仅白名单只读命令可自动执行，工作目录固定为当前项目。",
+            "- touch、mkdir 仅能通过一次性确认 ID 在工作区相对路径执行。",
+            "- 删除、提权、网络、管道/重定向和工作区外路径一律拒绝。",
+            "- 用户确认不会扩大程序预先定义的权限范围。",
+        )
     )
 
 

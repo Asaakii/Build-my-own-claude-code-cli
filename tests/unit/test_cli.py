@@ -195,3 +195,24 @@ def test_repl_manages_project_memory_explicitly(tmp_path, monkeypatch) -> None:
     assert "已添加项目记忆：" in result.output
     assert "代码注释使用中文。" in result.output
     assert "项目记忆错误：未找到该项目记忆 ID。" in result.output
+
+
+def test_repl_supports_help_session_clear_and_permission_commands(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """基础 Slash Commands 应显式显示状态，且 clear 不删除旧会话。"""
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(
+        app,
+        ["repl"],
+        input="/help\n/session\n/clear\n/session list\n/permissions\n/exit\n",
+    )
+
+    assert result.exit_code == 0
+    assert "/clear：新建空会话" in result.output
+    assert "当前会话：" in result.output
+    assert "已清空当前对话并新建会话：" in result.output
+    assert "对话消息：0" in result.output
+    assert "Shell 权限边界：" in result.output
