@@ -23,6 +23,7 @@ from agent_code.providers.anthropic import AnthropicProvider
 from agent_code.providers.base import Provider, ProviderError
 from agent_code.providers.demo import DemoProvider
 from agent_code.sessions import SessionStore
+from agent_code.todos import TodoStatus, TodoStore
 from agent_code.tools.check_command import CheckCommandTool
 from agent_code.tools.echo import EchoTool
 from agent_code.tools.glob_files import GlobTool
@@ -199,6 +200,7 @@ def repl(
     """进入交互式 Agent 终端。"""
     session_store = SessionStore(Path.cwd())
     memory_store = ProjectMemoryStore(Path.cwd())
+    todo_store = TodoStore(Path.cwd())
 
     try:
         if session is None:
@@ -294,6 +296,13 @@ def repl(
                 console.print(_handle_memory_command(memory_store, prompt))
             except ValueError as error:
                 console.print(f"[red]项目记忆错误：{error}[/red]")
+            continue
+
+        if prompt.startswith("/todo"):
+            try:
+                console.print(_handle_todo_command(todo_store, prompt))
+            except ValueError as error:
+                console.print(f"[red]Todo 错误：{error}[/red]")
             continue
 
         if prompt == "/audit":
@@ -397,6 +406,36 @@ def _handle_memory_command(store: ProjectMemoryStore, prompt: str) -> str:
     )
 
 
+def _handle_todo_command(store: TodoStore, prompt: str) -> str:
+    """处理 Todo 的显式创建、查看和状态转换。"""
+    parts = prompt.split(maxsplit=3)
+
+    if parts == ["/todo"]:
+        items = store.list_items()
+        return "\n".join(
+            f"{item.id} | {item.status} | {item.text}" for item in items
+        ) or "当前项目没有 Todo。"
+
+    if len(parts) == 3 and parts[1] == "add":
+        item = store.add(parts[2])
+        return f"已添加 Todo：{item.id} | {item.status}"
+
+    if len(parts) == 4 and parts[1] == "set":
+        try:
+            status = TodoStatus(parts[3])
+        except ValueError as error:
+            raise ValueError(
+                "状态必须是 pending、in_progress、completed 或 blocked。"
+            ) from error
+
+        item = store.set_status(parts[2], status)
+        return f"已更新 Todo：{item.id} | {item.status}"
+
+    raise ValueError(
+        "用法：/todo；/todo add <内容>；/todo set <ID> <状态>"
+    )
+
+
 def _render_repl_help() -> str:
     """返回当前 REPL 最小命令集的稳定帮助文本。"""
     return "\n".join(
@@ -406,6 +445,7 @@ def _render_repl_help() -> str:
             "/session：显示当前会话。",
             "/session list：列出可恢复会话（/sessions 为兼容别名）。",
             "/memory：查看；/memory add <文本>：保存；/memory remove <ID>：删除。",
+            "/todo：查看；/todo add <内容>；/todo set <ID> <状态>。",
             "/permissions：显示 Shell 权限边界。",
             "/plan：查看；/plan on：只读计划；/plan off：关闭计划模式。",
             "/audit：显示最小编辑与命令审计。",

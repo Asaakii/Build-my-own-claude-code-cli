@@ -230,3 +230,18 @@ def test_repl_plan_mode_is_on_by_default_and_can_be_explicitly_disabled(
     assert result.exit_code == 0
     assert "Plan Mode：开启（只读探索）。" in result.output
     assert "Plan Mode：关闭（仍受既有权限引擎与确认流程限制）。" in result.output
+
+
+def test_repl_manages_persistent_todos(tmp_path, monkeypatch) -> None:
+    """Todo 命令应创建、列出并转换任务状态。"""
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(
+        app,
+        ["repl"],
+        input="/todo add 补充测试\n/todo\n/exit\n",
+    )
+
+    assert result.exit_code == 0
+    assert "已添加 Todo：" in result.output
+    assert "pending | 补充测试" in result.output

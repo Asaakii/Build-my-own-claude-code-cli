@@ -193,3 +193,10 @@
 - 关闭 Plan Mode 不会提升既有权限：文件写入仍需预览与确认，Shell 仍须经过权限引擎与一次性确认流程。
 - 验证结果：Python 3.12.13 环境下 96 项测试通过；`ruff check .` 与 `git diff --check` 通过。
 - 关键理解：Plan Mode 的关键不是让模型“承诺不写”，而是让写入能力在执行边界不可用；退出模式是显式用户动作，但也只能恢复已有权限。
+
+### 阶段 8.2：持久化 Todo
+
+- 新增独立 `.agent-code/todos.json`，支持 `/todo` 查看、`/todo add <内容>` 创建和 `/todo set <ID> <状态>` 更新。
+- Todo 状态固定为 pending、in_progress、completed、blocked；存储采取大小上限、疑似凭据拒绝、损坏文件不覆盖和原子替换。
+- 验证结果：Python 3.12.13 环境下 99 项测试通过；`ruff check .` 与 `git diff --check` 通过。
+- 关键理解：Todo 是可持久化的任务状态，不是模型的自由文本。受限枚举与原子状态写入为后续任务图、崩溃恢复和并发领取提供了可靠基础。
