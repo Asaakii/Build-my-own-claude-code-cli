@@ -14,6 +14,8 @@ from agent_code.edits import (
     PendingEditStore,
     apply_pending_edit,
 )
+from agent_code.hook_config import load_project_hooks
+from agent_code.hooks import PreToolUseHook
 from agent_code.models import Message
 from agent_code.project_memory import ProjectMemoryStore
 from agent_code.providers.anthropic import AnthropicProvider
@@ -47,6 +49,7 @@ def create_agent(
     pending_edits: PendingEditStore | None = None,
     pending_commands: PendingCommandStore | None = None,
     audit_log: EditAuditLog | None = None,
+    pre_tool_use_hooks: tuple[PreToolUseHook, ...] = (),
 ) -> Agent:
     """根据 Provider 名称创建 Agent。"""
     provider = create_provider(
@@ -79,6 +82,7 @@ def create_agent(
                 pending_edits=pending_edits,
             ),
         ],
+        pre_tool_use_hooks=pre_tool_use_hooks,
     )
 
 
@@ -153,10 +157,16 @@ def run(
     ),
 ) -> None:
     """执行一次 Agent。"""
+    loaded_hooks = load_project_hooks(Path.cwd())
+
+    for warning in loaded_hooks.warnings:
+        console.print(f"[yellow]{warning}[/yellow]")
+
     agent = _create_agent_or_exit(
         provider_name=provider,
         model=model,
         base_url=base_url,
+        pre_tool_use_hooks=loaded_hooks.pre_tool_use_hooks,
     )
     result = _run_agent_or_exit(agent, prompt)
     console.print(result.text)
@@ -205,6 +215,11 @@ def repl(
     pending_edits = PendingEditStore()
     pending_commands = PendingCommandStore()
     audit_log = EditAuditLog()
+    loaded_hooks = load_project_hooks(Path.cwd())
+
+    for warning in loaded_hooks.warnings:
+        console.print(f"[yellow]{warning}[/yellow]")
+
     agent = _create_agent_or_exit(
         provider_name=provider,
         model=model,
@@ -212,6 +227,7 @@ def repl(
         pending_edits=pending_edits,
         pending_commands=pending_commands,
         audit_log=audit_log,
+        pre_tool_use_hooks=loaded_hooks.pre_tool_use_hooks,
     )
     console.print(
         f"会话：{session_id}（{session_state}）。输入 /help、/session、/memory、"
@@ -424,6 +440,7 @@ def _create_agent_or_exit(
     pending_edits: PendingEditStore | None = None,
     pending_commands: PendingCommandStore | None = None,
     audit_log: EditAuditLog | None = None,
+    pre_tool_use_hooks: tuple[PreToolUseHook, ...] = (),
 ) -> Agent:
     """将配置错误转换为明确的 CLI 错误。"""
     try:
@@ -434,6 +451,7 @@ def _create_agent_or_exit(
             pending_edits=pending_edits,
             pending_commands=pending_commands,
             audit_log=audit_log,
+            pre_tool_use_hooks=pre_tool_use_hooks,
         )
     except ConfigurationError as error:
         console.print(f"[red]配置错误：{error}[/red]")

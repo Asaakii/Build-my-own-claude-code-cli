@@ -3,6 +3,7 @@
 import pytest
 
 from agent_code.agent import Agent
+from agent_code.hook_config import DenyToolsHook
 from agent_code.hooks import PostToolUseEvent, PreToolUseDecision, PreToolUseEvent
 from agent_code.models import Message, ModelResponse, ToolCall
 from agent_code.providers.mock import MockProvider
@@ -185,3 +186,15 @@ def test_hook_exceptions_do_not_break_tool_loop() -> None:
 
     assert agent.run("调用工具").text == "完成。"
     assert provider.requests[1][-1].content == "正常结果"
+
+
+def test_declarative_deny_hook_rejects_only_configured_tool() -> None:
+    """声明式 Hook 只能拒绝配置中指定的工具。"""
+    hook = DenyToolsHook(tool_names=frozenset({"echo"}), reason="项目策略")
+
+    assert hook.before_tool_use(
+        PreToolUseEvent(ToolCall(id="1", name="echo", arguments={}))
+    ) == PreToolUseDecision(allow=False, reason="项目策略")
+    assert hook.before_tool_use(
+        PreToolUseEvent(ToolCall(id="2", name="read_file", arguments={}))
+    ) == PreToolUseDecision(allow=True)
