@@ -4,7 +4,7 @@ from typer.testing import CliRunner
 
 from agent_code import __version__
 from agent_code.cli import app
-from agent_code.models import Message
+from agent_code.models import Message, ModelResponse, ToolCall
 from agent_code.sessions import SessionStore
 
 runner = CliRunner()
@@ -107,6 +107,39 @@ def test_status_does_not_display_secret_values(
     assert "secret-value-must-not-appear" not in result.output
     assert "private-model-name" not in result.output
     assert "https://private.example.com" not in result.output
+
+
+class _SmokeProvider:
+    """为真实冒烟命令提供不联网的协议级替身。"""
+
+    def respond(self, messages, tools=()):
+        if messages[-1].role == "user":
+            return ModelResponse(
+                tool_calls=(
+                    ToolCall(
+                        id="smoke-echo",
+                        name="echo",
+                        arguments={"text": "smoke-ok"},
+                    ),
+                )
+            )
+
+        return ModelResponse(text="SMOKE_OK")
+
+
+def test_smoke_requires_the_real_provider_and_verifies_tool_round_trip(
+    monkeypatch,
+) -> None:
+    """真实冒烟只接受真实 Provider，并要求精确的工具调用结果。"""
+    monkeypatch.setattr("agent_code.cli.create_provider", lambda **_: _SmokeProvider())
+
+    result = runner.invoke(app, ["smoke"])
+    demo_result = runner.invoke(app, ["smoke", "--provider", "demo"])
+
+    assert result.exit_code == 0
+    assert "真实模型冒烟通过" in result.output
+    assert demo_result.exit_code == 2
+    assert "仅支持 --provider anthropic" in demo_result.output
 
 
 def test_repl_rejects_approve_command_without_identifier() -> None:

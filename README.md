@@ -41,6 +41,9 @@ export AGENT_CODE_MODEL='模型标识'
 export ANTHROPIC_BASE_URL='可选的兼容端点'
 .venv/bin/agent-code status
 .venv/bin/agent-code run --provider anthropic "用一句话介绍自己"
+
+# 显式运行一次只含 echo 工具的受控真实模型验收
+.venv/bin/agent-code smoke
 ```
 
 `.env` 不会被程序自动读取，也绝不能提交。并非所有“OpenAI 兼容”服务都兼容
@@ -80,6 +83,9 @@ Anthropic Messages API；若服务仅提供 OpenAI 协议，不能只改 Base UR
 ```
 
 完整的 REPL 帮助以运行时 `/help` 输出为准。
+
+`agent-code smoke` 不会使用文件或 Shell 工具，只要求模型调用 `echo` 并返回
+`SMOKE_OK`；它是有配置时的真实 Provider 验收命令，可能产生一次模型请求费用。
 
 ## 验证与打包
 

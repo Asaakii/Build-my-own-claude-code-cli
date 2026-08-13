@@ -45,6 +45,9 @@ app = typer.Typer(
 )
 
 console = Console()
+SMOKE_PROMPT = (
+    "请调用 echo 工具，参数 text 必须为 smoke-ok。收到工具结果后，只输出 SMOKE_OK。"
+)
 
 
 def create_agent(
@@ -90,6 +93,22 @@ def create_agent(
         ],
         pre_tool_use_hooks=pre_tool_use_hooks,
     )
+
+
+def create_smoke_agent(
+    provider_name: str,
+    api_key: str | None = None,
+    model: str | None = None,
+    base_url: str | None = None,
+) -> Agent:
+    """创建只带 echo 工具的真实模型冒烟 Agent。"""
+    provider = create_provider(
+        provider_name=provider_name,
+        api_key=api_key,
+        model=model,
+        base_url=base_url,
+    )
+    return Agent(provider=provider, tools=[EchoTool()], max_turns=4)
 
 
 def create_provider(
@@ -141,6 +160,45 @@ def status() -> None:
         console.print(f"anthropic Provider：未配置（{error}）")
     else:
         console.print("anthropic Provider：已配置。")
+
+
+@app.command()
+def smoke(
+    provider: str = typer.Option(
+        "anthropic",
+        "--provider",
+        help="仅允许 anthropic Provider，避免把本地演示误作真实验证。",
+    ),
+    model: str | None = typer.Option(
+        None,
+        "--model",
+        help="覆盖 AGENT_CODE_MODEL 环境变量。",
+    ),
+    base_url: str | None = typer.Option(
+        None,
+        "--base-url",
+        help="覆盖 ANTHROPIC_BASE_URL 环境变量。",
+    ),
+) -> None:
+    """受控验证真实模型的工具调用回合。"""
+    if provider != "anthropic":
+        console.print("[red]真实模型冒烟仅支持 --provider anthropic。[/red]")
+        raise typer.Exit(code=2)
+
+    agent = _create_smoke_agent_or_exit(
+        provider_name=provider,
+        model=model,
+        base_url=base_url,
+    )
+    result = _run_agent_or_exit(agent, SMOKE_PROMPT)
+
+    if not _is_successful_smoke_result(result):
+        console.print(
+            "[red]真实模型冒烟失败：未观察到 echo 工具调用及最终 SMOKE_OK。[/red]"
+        )
+        raise typer.Exit(code=1)
+
+    console.print("真实模型冒烟通过：观察到 echo 工具调用与最终 SMOKE_OK。")
 
 
 @app.command()
@@ -768,6 +826,23 @@ def _create_agent_or_exit(
         raise typer.Exit(code=2) from error
 
 
+def _create_smoke_agent_or_exit(
+    provider_name: str,
+    model: str | None,
+    base_url: str | None,
+) -> Agent:
+    """将真实模型冒烟的配置错误转换为 CLI 错误。"""
+    try:
+        return create_smoke_agent(
+            provider_name=provider_name,
+            model=model,
+            base_url=base_url,
+        )
+    except ConfigurationError as error:
+        console.print(f"[red]配置错误：{error}[/red]")
+        raise typer.Exit(code=2) from error
+
+
 def _run_agent_or_exit(agent: Agent, prompt: str) -> AgentResult:
     """将模型服务错误转换为明确的 CLI 错误。"""
     try:
@@ -775,6 +850,17 @@ def _run_agent_or_exit(agent: Agent, prompt: str) -> AgentResult:
     except ProviderError as error:
         console.print(f"[red]模型服务错误：{error}[/red]")
         raise typer.Exit(code=1) from error
+
+
+def _is_successful_smoke_result(result: AgentResult) -> bool:
+    """确认真实 Provider 走过精确的最小工具调用链。"""
+    return (
+        result.text.strip() == "SMOKE_OK"
+        and any(
+            message.role == "tool" and message.content == "smoke-ok"
+            for message in result.messages
+        )
+    )
 
 
 def main() -> None:
