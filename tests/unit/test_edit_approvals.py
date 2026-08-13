@@ -1,11 +1,16 @@
-"""待确认编辑与原子写入的单元测试。"""
+"""待确认编辑、原子写入与审计的单元测试。"""
 
 import hashlib
 import re
 
 import pytest
 
-from agent_code.edits import PendingEditStore, apply_pending_edit
+from agent_code.edits import (
+    EditAuditLog,
+    PendingEditStore,
+    apply_pending_edit,
+)
+from agent_code.tools.preview_create_file import PreviewCreateFileTool
 from agent_code.tools.preview_replace import PreviewReplaceTool
 
 
@@ -24,12 +29,15 @@ def _approval_id(preview: str) -> str:
     return matched.group(1)
 
 
-def test_approved_preview_writes_exact_replacement(tmp_path) -> None:
-    """用户确认后应写入已预览的一次精确替换。"""
+def test_approved_preview_writes_exact_replacement_and_audits(
+    tmp_path,
+) -> None:
+    """用户确认后应写入已预览的一次精确替换，并留下不含内容的审计。"""
     file_path = tmp_path / "settings.py"
     original_text = "version = 1\n"
     file_path.write_text(original_text, encoding="utf-8")
     pending_edits = PendingEditStore()
+    audit_log = EditAuditLog()
     preview_tool = PreviewReplaceTool(
         tmp_path,
         pending_edits=pending_edits,
@@ -47,10 +55,15 @@ def test_approved_preview_writes_exact_replacement(tmp_path) -> None:
         pending_edits,
         workspace_root=tmp_path,
         approval_id=_approval_id(preview),
+        audit_log=audit_log,
     )
+
+    audit = audit_log.render()
 
     assert "已写入：settings.py" in result
     assert file_path.read_text(encoding="utf-8") == "version = 2\n"
+    assert "已完成 | replace | settings.py" in audit
+    assert "version = 2" not in audit
 
 
 def test_pending_edit_is_one_time_and_detects_stale_file(tmp_path) -> None:
@@ -90,3 +103,56 @@ def test_pending_edit_is_one_time_and_detects_stale_file(tmp_path) -> None:
             workspace_root=tmp_path,
             approval_id=approval_id,
         )
+
+
+def test_approved_preview_creates_new_file_without_overwrite(tmp_path) -> None:
+    """用户确认后应创建预览的新文件，已存在目标必须拒绝覆盖。"""
+    pending_edits = PendingEditStore()
+    preview_tool = PreviewCreateFileTool(
+        tmp_path,
+        pending_edits=pending_edits,
+    )
+
+    preview = preview_tool.run(
+        {
+            "path": "new-note.txt",
+            "content": "由 agent-code 创建\n",
+        }
+    )
+    result = apply_pending_edit(
+        pending_edits,
+        workspace_root=tmp_path,
+        approval_id=_approval_id(preview),
+    )
+
+    assert "已写入：new-note.txt" in result
+    assert "新建文件：1" in result
+    assert (tmp_path / "new-note.txt").read_text(encoding="utf-8") == (
+        "由 agent-code 创建\n"
+    )
+
+    with pytest.raises(ValueError, match="目标文件已存在"):
+        preview_tool.run(
+            {
+                "path": "new-note.txt",
+                "content": "不应覆盖",
+            }
+        )
+
+
+def test_create_preview_rejects_missing_parent_and_symlink(tmp_path) -> None:
+    """不存在的父目录和符号链接路径都必须被拒绝。"""
+    outside_directory = tmp_path.parent / "outside-directory"
+    outside_directory.mkdir(exist_ok=True)
+    (tmp_path / "outside-link").symlink_to(
+        outside_directory,
+        target_is_directory=True,
+    )
+    tool = PreviewCreateFileTool(tmp_path)
+
+    for path, expected_message in (
+        ("missing/note.txt", "父目录不存在"),
+        ("outside-link/note.txt", "符号链接"),
+    ):
+        with pytest.raises(ValueError, match=expected_message):
+            tool.run({"path": path, "content": "内容"})

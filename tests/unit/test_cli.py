@@ -113,3 +113,11 @@ def test_repl_rejects_approve_command_without_identifier() -> None:
 
     assert result.exit_code == 0
     assert "用法：/approve <确认 ID>" in result.output
+
+
+def test_repl_displays_empty_edit_audit() -> None:
+    """REPL 的 /audit 应显示当前会话的最小审计状态。"""
+    result = runner.invoke(app, ["repl"], input="/audit\n/exit\n")
+
+    assert result.exit_code == 0
+    assert "当前会话没有编辑审计记录" in result.output

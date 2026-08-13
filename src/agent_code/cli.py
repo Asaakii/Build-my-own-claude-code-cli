@@ -8,13 +8,18 @@ from rich.console import Console
 from agent_code import __version__
 from agent_code.agent import Agent, AgentResult
 from agent_code.config import ConfigurationError, load_anthropic_config
-from agent_code.edits import PendingEditStore, apply_pending_edit
+from agent_code.edits import (
+    EditAuditLog,
+    PendingEditStore,
+    apply_pending_edit,
+)
 from agent_code.providers.anthropic import AnthropicProvider
 from agent_code.providers.base import Provider, ProviderError
 from agent_code.providers.demo import DemoProvider
 from agent_code.tools.echo import EchoTool
 from agent_code.tools.glob_files import GlobTool
 from agent_code.tools.list_dir import ListDirectoryTool
+from agent_code.tools.preview_create_file import PreviewCreateFileTool
 from agent_code.tools.preview_replace import PreviewReplaceTool
 from agent_code.tools.read_file import ReadFileTool
 from agent_code.tools.search_text import SearchTextTool
@@ -34,6 +39,7 @@ def create_agent(
     model: str | None = None,
     base_url: str | None = None,
     pending_edits: PendingEditStore | None = None,
+    audit_log: EditAuditLog | None = None,
 ) -> Agent:
     """根据 Provider 名称创建 Agent。"""
     provider = create_provider(
@@ -43,6 +49,7 @@ def create_agent(
         base_url=base_url,
     )
     pending_edits = pending_edits or PendingEditStore()
+    audit_log = audit_log or EditAuditLog()
     return Agent(
         provider=provider,
         tools=[
@@ -52,6 +59,10 @@ def create_agent(
             GlobTool(workspace_root=Path.cwd()),
             SearchTextTool(workspace_root=Path.cwd()),
             PreviewReplaceTool(
+                workspace_root=Path.cwd(),
+                pending_edits=pending_edits,
+            ),
+            PreviewCreateFileTool(
                 workspace_root=Path.cwd(),
                 pending_edits=pending_edits,
             ),
@@ -81,9 +92,7 @@ def create_provider(
             base_url=config.base_url,
         )
 
-    raise ConfigurationError(
-        "不支持的 Provider。可选值为 demo 或 anthropic。"
-    )
+    raise ConfigurationError("不支持的 Provider。可选值为 demo 或 anthropic。")
 
 
 @app.callback(invoke_without_command=True)
@@ -161,15 +170,15 @@ def repl(
 ) -> None:
     """进入交互式 Agent 终端。"""
     pending_edits = PendingEditStore()
+    audit_log = EditAuditLog()
     agent = _create_agent_or_exit(
         provider_name=provider,
         model=model,
         base_url=base_url,
         pending_edits=pending_edits,
+        audit_log=audit_log,
     )
-    console.print(
-        "已进入交互模式。输入 /exit、/quit 或 /approve <确认 ID>。"
-    )
+    console.print("已进入交互模式。输入 /exit、/quit、/audit 或 /approve <确认 ID>。")
 
     while True:
         try:
@@ -185,13 +194,15 @@ def repl(
             console.print("已退出 REPL。")
             break
 
+        if prompt == "/audit":
+            console.print(audit_log.render())
+            continue
+
         if prompt.startswith("/approve"):
             command_parts = prompt.split()
 
             if len(command_parts) != 2:
-                console.print(
-                    "[red]用法：/approve <确认 ID>[/red]"
-                )
+                console.print("[red]用法：/approve <确认 ID>[/red]")
                 continue
 
             try:
@@ -199,6 +210,7 @@ def repl(
                     pending_edits,
                     workspace_root=Path.cwd(),
                     approval_id=command_parts[1],
+                    audit_log=audit_log,
                 )
             except (RuntimeError, ValueError) as error:
                 console.print(f"[red]写入失败：{error}[/red]")
@@ -224,6 +236,7 @@ def _create_agent_or_exit(
     model: str | None,
     base_url: str | None,
     pending_edits: PendingEditStore | None = None,
+    audit_log: EditAuditLog | None = None,
 ) -> Agent:
     """将配置错误转换为明确的 CLI 错误。"""
     try:
@@ -232,6 +245,7 @@ def _create_agent_or_exit(
             model=model,
             base_url=base_url,
             pending_edits=pending_edits,
+            audit_log=audit_log,
         )
     except ConfigurationError as error:
         console.print(f"[red]配置错误：{error}[/red]")

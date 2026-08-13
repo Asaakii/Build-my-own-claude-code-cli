@@ -80,16 +80,12 @@ class PreviewReplaceTool:
         current_sha256 = hashlib.sha256(raw_content).hexdigest()
 
         if current_sha256 != expected_sha256:
-            raise ValueError(
-                "文件内容已变化，或尚未使用当前文件内容调用 read_file。"
-            )
+            raise ValueError("文件内容已变化，或尚未使用当前文件内容调用 read_file。")
 
         try:
             original_text = raw_content.decode("utf-8")
         except UnicodeDecodeError as error:
-            raise ValueError(
-                f"拒绝预览非 UTF-8 文本文件：{display_path}。"
-            ) from error
+            raise ValueError(f"拒绝预览非 UTF-8 文本文件：{display_path}。") from error
 
         occurrence_count = self._count_overlapping_matches(
             original_text,
@@ -116,14 +112,11 @@ class PreviewReplaceTool:
 
         if len(diff) > self.max_preview_chars:
             raise ValueError(
-                f"变更预览超过 {self.max_preview_chars} 个字符上限，"
-                "请缩小替换范围。"
+                f"变更预览超过 {self.max_preview_chars} 个字符上限，请缩小替换范围。"
             )
 
-        updated_sha256 = hashlib.sha256(
-            updated_text.encode("utf-8")
-        ).hexdigest()
-        approval_id = self._pending_edits.create(
+        updated_sha256 = hashlib.sha256(updated_text.encode("utf-8")).hexdigest()
+        approval_id = self._pending_edits.create_replace(
             path=display_path,
             expected_sha256=current_sha256,
             old_text=old_text,
@@ -147,9 +140,7 @@ class PreviewReplaceTool:
         path = arguments.get("path")
 
         if not isinstance(path, str) or not path.strip():
-            raise ValueError(
-                "preview_replace 工具需要非空字符串类型的 path 参数。"
-            )
+            raise ValueError("preview_replace 工具需要非空字符串类型的 path 参数。")
 
         if "\x00" in path:
             raise ValueError("path 不能包含空字节。")
@@ -157,14 +148,10 @@ class PreviewReplaceTool:
         requested_path = Path(path)
 
         if requested_path.is_absolute():
-            raise ValueError(
-                "preview_replace 只允许工作区内的相对路径。"
-            )
+            raise ValueError("preview_replace 只允许工作区内的相对路径。")
 
         if ".." in requested_path.parts:
-            raise ValueError(
-                "preview_replace 不允许 path 中包含 '..'。"
-            )
+            raise ValueError("preview_replace 不允许 path 中包含 '..'。")
 
         return path
 
@@ -186,8 +173,7 @@ class PreviewReplaceTool:
 
         if len(value) > self.max_replacement_text_chars:
             raise ValueError(
-                f"{name} 不能超过 "
-                f"{self.max_replacement_text_chars} 个字符。"
+                f"{name} 不能超过 {self.max_replacement_text_chars} 个字符。"
             )
 
         return value
