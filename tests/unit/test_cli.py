@@ -174,3 +174,24 @@ def test_repl_rejects_unknown_session_id(tmp_path, monkeypatch) -> None:
 
     assert result.exit_code == 2
     assert "会话错误：会话不存在，无法恢复。" in result.output
+
+
+def test_repl_manages_project_memory_explicitly(tmp_path, monkeypatch) -> None:
+    """项目记忆只能通过显式 Slash Command 添加、查看和删除。"""
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(
+        app,
+        ["repl"],
+        input=(
+            "/memory add 代码注释使用中文。\n"
+            "/memory\n"
+            "/memory remove invalid\n"
+            "/exit\n"
+        ),
+    )
+
+    assert result.exit_code == 0
+    assert "已添加项目记忆：" in result.output
+    assert "代码注释使用中文。" in result.output
+    assert "项目记忆错误：未找到该项目记忆 ID。" in result.output

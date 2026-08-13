@@ -15,6 +15,7 @@ from agent_code.edits import (
     apply_pending_edit,
 )
 from agent_code.models import Message
+from agent_code.project_memory import ProjectMemoryStore
 from agent_code.providers.anthropic import AnthropicProvider
 from agent_code.providers.base import Provider, ProviderError
 from agent_code.providers.demo import DemoProvider
@@ -186,6 +187,7 @@ def repl(
 ) -> None:
     """进入交互式 Agent 终端。"""
     session_store = SessionStore(Path.cwd())
+    memory_store = ProjectMemoryStore(Path.cwd())
 
     try:
         if session is None:
@@ -212,7 +214,7 @@ def repl(
         audit_log=audit_log,
     )
     console.print(
-        f"会话：{session_id}（{session_state}）。输入 /sessions、/exit、"
+        f"会话：{session_id}（{session_state}）。输入 /sessions、/memory、/exit、"
         "/quit、/audit、/approve <编辑确认 ID> 或 "
         "/approve-command <命令确认 ID>。"
     )
@@ -242,6 +244,13 @@ def repl(
                     f"{session_info.session_id} | "
                     f"对话消息：{session_info.message_count}{corruption_note}"
                 )
+            continue
+
+        if prompt.startswith("/memory"):
+            try:
+                console.print(_handle_memory_command(memory_store, prompt))
+            except ValueError as error:
+                console.print(f"[red]项目记忆错误：{error}[/red]")
             continue
 
         if prompt == "/audit":
@@ -296,7 +305,11 @@ def repl(
             continue
 
         try:
-            result = agent.run(prompt, history=history)
+            result = agent.run(
+                prompt,
+                history=history,
+                project_memory=memory_store.render_context(),
+            )
         except ProviderError as error:
             console.print(f"[red]模型服务错误：{error}[/red]")
             continue
@@ -314,6 +327,31 @@ def repl(
             console.print(f"[yellow]会话未保存：{error}[/yellow]")
 
         console.print(f"agent> {result.text}")
+
+
+def _handle_memory_command(store: ProjectMemoryStore, prompt: str) -> str:
+    """处理项目记忆的显式添加、查看和删除命令。"""
+    parts = prompt.split(maxsplit=2)
+
+    if parts == ["/memory"]:
+        items = store.list_items()
+
+        if not items:
+            return "当前项目没有已保存的长期约定。"
+
+        return "\n".join(f"{item.id} | {item.text}" for item in items)
+
+    if len(parts) == 3 and parts[1] == "add":
+        item = store.add(parts[2])
+        return f"已添加项目记忆：{item.id}"
+
+    if len(parts) == 3 and parts[1] == "remove":
+        store.remove(parts[2])
+        return f"已删除项目记忆：{parts[2]}"
+
+    raise ValueError(
+        "用法：/memory；/memory add <长期约定>；/memory remove <记忆 ID>"
+    )
 
 
 def _create_agent_or_exit(

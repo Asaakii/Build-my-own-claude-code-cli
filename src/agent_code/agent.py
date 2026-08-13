@@ -36,12 +36,20 @@ class Agent:
         self,
         prompt: str,
         history: Sequence[Message] = (),
+        project_memory: str = "",
     ) -> AgentResult:
-        """执行一次“历史 → 用户输入 → 模型 → 工具 → 模型”的循环。"""
+        """执行一次“项目记忆 → 历史 → 用户输入 → 模型”的循环。"""
         if any(message.role not in {"user", "assistant"} for message in history):
             raise ValueError("恢复的会话历史只允许 user 或 assistant 消息。")
 
-        messages = list(history)
+        messages: list[Message] = []
+        project_memory_message_count = 0
+
+        if project_memory:
+            messages.append(Message(role="user", content=project_memory))
+            project_memory_message_count = 1
+
+        messages.extend(history)
         messages.append(Message(role="user", content=prompt))
 
         for _ in range(self._max_turns):
@@ -60,7 +68,7 @@ class Agent:
             if not response.tool_calls:
                 return AgentResult(
                     text=response.text,
-                    messages=tuple(messages),
+                    messages=tuple(messages[project_memory_message_count:]),
                 )
 
             for tool_call in response.tool_calls:

@@ -93,3 +93,29 @@ def test_agent_sends_restored_history_before_new_prompt() -> None:
         Message(role="assistant", content="旧回答"),
         Message(role="user", content="新问题"),
     )
+
+
+def test_agent_sends_project_memory_without_storing_it_in_history() -> None:
+    """项目记忆应注入请求，但不伪装为可恢复的历史消息。"""
+    provider = MockProvider(responses=[ModelResponse(text="收到。")])
+    agent = Agent(provider=provider, tools=[])
+
+    result = agent.run(
+        "新问题",
+        history=(Message(role="user", content="旧问题"),),
+        project_memory="以下是用户显式保存的项目长期约定：\n- 使用 Python 3.12。",
+    )
+
+    assert provider.requests[0] == (
+        Message(
+            role="user",
+            content="以下是用户显式保存的项目长期约定：\n- 使用 Python 3.12。",
+        ),
+        Message(role="user", content="旧问题"),
+        Message(role="user", content="新问题"),
+    )
+    assert result.messages == (
+        Message(role="user", content="旧问题"),
+        Message(role="user", content="新问题"),
+        Message(role="assistant", content="收到。"),
+    )
