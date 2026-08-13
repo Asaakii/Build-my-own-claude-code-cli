@@ -207,3 +207,11 @@
 - 计划期保持写入/命令工具不可用；用户审阅步骤后输入 `/plan off` 才能仅在当前 REPL 会话恢复既有写入确认流程。
 - 验证结果：Python 3.12.13 环境下 99 项测试通过；`ruff check .` 与 `git diff --check` 通过。
 - 关键理解：计划输出必须是可审阅的结构化状态，而不是一句“我会做什么”的自然语言承诺；批准只改变会话模式，不授予新的工具权限。
+
+### 阶段 9：Skills 按需加载
+
+- 制定 `SKILL.md` 最小 front matter：name、description、applies_to；正文承载步骤和边界，提供 `skills/code-review/SKILL.md` 示例。
+- `/skills` 仅扫描并显示元数据和来源；`/skill load <ID>` 才读取正文。技能不会写入项目记忆或会话 JSONL。
+- 仅接受工作区 `skills/*/SKILL.md`，拒绝符号链接、越界/无效标识、非 UTF-8、格式缺失和超过 32 KiB 的技能；元数据读取最多 4 KiB。
+- 验证结果：Python 3.12.13 环境下 102 项测试通过；`ruff check .` 与 `git diff --check` 通过。
+- 关键理解：技能是受控的按需上下文，不是永久提示词。先发现能力摘要，再经显式选择加载正文，才能控制上下文占用与文件系统攻击面。

@@ -251,3 +251,21 @@ def test_repl_manages_persistent_todos(tmp_path, monkeypatch) -> None:
     assert result.exit_code == 0
     assert "已添加 Todo：" in result.output
     assert "pending | 补充测试" in result.output
+
+
+def test_repl_lists_and_loads_skills_on_demand(tmp_path, monkeypatch) -> None:
+    """REPL 列表只显示元数据，显式命令才显示技能正文。"""
+    skill = tmp_path / "skills" / "review" / "SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text(
+        "---\nname: 审查\ndescription: 审查代码\napplies_to: 审查时。\n---\n正文步骤\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["repl"], input="/skills\n/skill load review\n/exit\n")
+
+    assert result.exit_code == 0
+    assert "review | 审查 | 审查代码 | skills/review/SKILL.md" in result.output
+    assert "已加载技能：审查" in result.output
+    assert "正文步骤" in result.output
