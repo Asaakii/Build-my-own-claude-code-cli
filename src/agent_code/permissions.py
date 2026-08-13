@@ -115,6 +115,24 @@ class CommandPolicy:
             "命令不在自动允许的只读集合中，后续执行必须经用户确认。",
         )
 
+    def is_confirmable(self, command: str) -> bool:
+        """判断命令是否属于当前可确认执行的最小普通写入集合。"""
+        decision = self.evaluate(command)
+
+        if decision.risk is not CommandRisk.ASK:
+            return False
+
+        tokens = shlex.split(command, posix=True)
+
+        if tokens[0] not in {"mkdir", "touch"} or len(tokens) < 2:
+            return False
+
+        return all(
+            path not in {"", "."}
+            and not path.startswith("-")
+            for path in tokens[1:]
+        )
+
     @staticmethod
     def _contains_outside_workspace_reference(arguments: list[str]) -> bool:
         for argument in arguments:

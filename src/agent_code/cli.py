@@ -7,6 +7,7 @@ from rich.console import Console
 
 from agent_code import __version__
 from agent_code.agent import Agent, AgentResult
+from agent_code.commands import PendingCommandStore, apply_pending_command
 from agent_code.config import ConfigurationError, load_anthropic_config
 from agent_code.edits import (
     EditAuditLog,
@@ -41,6 +42,7 @@ def create_agent(
     model: str | None = None,
     base_url: str | None = None,
     pending_edits: PendingEditStore | None = None,
+    pending_commands: PendingCommandStore | None = None,
     audit_log: EditAuditLog | None = None,
 ) -> Agent:
     """根据 Provider 名称创建 Agent。"""
@@ -61,7 +63,10 @@ def create_agent(
             ListDirectoryTool(workspace_root=Path.cwd()),
             GlobTool(workspace_root=Path.cwd()),
             SearchTextTool(workspace_root=Path.cwd()),
-            RunShellTool(workspace_root=Path.cwd()),
+            RunShellTool(
+                workspace_root=Path.cwd(),
+                pending_commands=pending_commands,
+            ),
             PreviewReplaceTool(
                 workspace_root=Path.cwd(),
                 pending_edits=pending_edits,
@@ -174,15 +179,20 @@ def repl(
 ) -> None:
     """进入交互式 Agent 终端。"""
     pending_edits = PendingEditStore()
+    pending_commands = PendingCommandStore()
     audit_log = EditAuditLog()
     agent = _create_agent_or_exit(
         provider_name=provider,
         model=model,
         base_url=base_url,
         pending_edits=pending_edits,
+        pending_commands=pending_commands,
         audit_log=audit_log,
     )
-    console.print("已进入交互模式。输入 /exit、/quit、/audit 或 /approve <确认 ID>。")
+    console.print(
+        "已进入交互模式。输入 /exit、/quit、/audit、"
+        "/approve <编辑确认 ID> 或 /approve-command <命令确认 ID>。"
+    )
 
     while True:
         try:
@@ -200,6 +210,29 @@ def repl(
 
         if prompt == "/audit":
             console.print(audit_log.render())
+            continue
+
+        if prompt.startswith("/approve-command"):
+            command_parts = prompt.split()
+
+            if len(command_parts) != 2:
+                console.print(
+                    "[red]用法：/approve-command <命令确认 ID>[/red]"
+                )
+                continue
+
+            try:
+                result = apply_pending_command(
+                    store=pending_commands,
+                    runner=RunShellTool(workspace_root=Path.cwd()),
+                    approval_id=command_parts[1],
+                    audit_log=audit_log,
+                )
+            except (RuntimeError, ValueError) as error:
+                console.print(f"[red]命令执行失败：{error}[/red]")
+            else:
+                console.print(result)
+
             continue
 
         if prompt.startswith("/approve"):
@@ -240,6 +273,7 @@ def _create_agent_or_exit(
     model: str | None,
     base_url: str | None,
     pending_edits: PendingEditStore | None = None,
+    pending_commands: PendingCommandStore | None = None,
     audit_log: EditAuditLog | None = None,
 ) -> Agent:
     """将配置错误转换为明确的 CLI 错误。"""
@@ -249,6 +283,7 @@ def _create_agent_or_exit(
             model=model,
             base_url=base_url,
             pending_edits=pending_edits,
+            pending_commands=pending_commands,
             audit_log=audit_log,
         )
     except ConfigurationError as error:

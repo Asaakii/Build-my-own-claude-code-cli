@@ -121,3 +121,11 @@ def test_repl_displays_empty_edit_audit() -> None:
 
     assert result.exit_code == 0
     assert "当前会话没有编辑审计记录" in result.output
+
+
+def test_repl_rejects_command_approval_without_identifier() -> None:
+    """REPL 应拒绝没有命令确认 ID 的确认命令。"""
+    result = runner.invoke(app, ["repl"], input="/approve-command\n/exit\n")
+
+    assert result.exit_code == 0
+    assert "用法：/approve-command <命令确认 ID>" in result.output
