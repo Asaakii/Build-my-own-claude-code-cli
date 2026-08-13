@@ -3,7 +3,7 @@
 from typer.testing import CliRunner
 
 from agent_code import __version__
-from agent_code.cli import app
+from agent_code.cli import _configure_repl_line_editing, app
 from agent_code.models import Message, ModelResponse, ToolCall
 from agent_code.sessions import SessionStore
 
@@ -80,6 +80,19 @@ def test_repl_accepts_prompt_and_exit_command() -> None:
     assert result.exit_code == 0
     assert "演示完成：你好" in result.output
     assert "已退出 REPL。" in result.output
+
+
+def test_repl_enables_terminal_line_editing(monkeypatch) -> None:
+    """REPL 应加载行编辑能力，让方向键不作为普通文本输入。"""
+    recorded: dict[str, int] = {}
+    monkeypatch.setattr(
+        "agent_code.cli.readline.set_history_length",
+        lambda length: recorded.setdefault("length", length),
+    )
+
+    _configure_repl_line_editing()
+
+    assert recorded == {"length": 200}
 
 
 def test_anthropic_provider_requires_configuration(

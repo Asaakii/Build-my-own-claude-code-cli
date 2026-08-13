@@ -31,6 +31,7 @@ python3.12 -m venv .venv
 `claude`：按 `Ctrl+C`、`/exit` 或 `/quit` 即退出，不会留在后台。需要不联网演示时用
 `agent-code repl --provider demo`。在 REPL 中先输入 `/help` 查看命令；默认启用
 Plan Mode，输入 `/plan off` 只能退出只读探索，不能绕过文件编辑和 Shell 的确认边界。
+REPL 使用终端行编辑：上、下方向键浏览本次启动后的输入历史，左、右方向键移动光标。
 真实 Provider 的普通文本会逐段显示，最终回答使用终端 Markdown 渲染（例如 `**粗体**`、
 标题、列表和代码块不会原样显示标记）。工具调用仍会等模型完整返回参数后才执行。
 

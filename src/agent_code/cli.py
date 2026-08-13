@@ -1,5 +1,6 @@
 """agent-code 的命令行入口。"""
 
+import readline
 from pathlib import Path
 from time import sleep
 
@@ -353,6 +354,7 @@ def repl(
     ),
 ) -> None:
     """进入交互式 Agent 终端。"""
+    _configure_repl_line_editing()
     session_store = SessionStore(Path.cwd())
     memory_store = ProjectMemoryStore(Path.cwd())
     todo_store = TodoStore(Path.cwd())
@@ -612,6 +614,11 @@ def repl(
             history = session_store.load_messages(session_id)
         except ValueError as error:
             console.print(f"[yellow]会话未保存：{error}[/yellow]")
+
+
+def _configure_repl_line_editing() -> None:
+    """启用终端行编辑，让方向键用于历史与光标移动。"""
+    readline.set_history_length(200)
 
 def _handle_memory_command(store: ProjectMemoryStore, prompt: str) -> str:
     """处理项目记忆的显式添加、查看和删除命令。"""
