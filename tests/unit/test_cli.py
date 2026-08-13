@@ -218,6 +218,26 @@ def test_repl_supports_help_session_clear_and_permission_commands(
     assert "Shell 权限边界：" in result.output
 
 
+def test_repl_status_shows_aggregate_state_without_message_contents(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    """状态命令应显示可审阅的会话和 Todo 汇总，不回显对话正文。"""
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(
+        app,
+        ["repl"],
+        input="秘密提示词\n/todo add 阅读 README\n/status\n/exit\n",
+    )
+
+    assert result.exit_code == 0
+    assert "Provider：demo" in result.output
+    assert "Plan Mode：开启（只读探索）。" in result.output
+    assert "pending=1" in result.output
+    assert "秘密提示词" not in result.output.split("Provider：demo", 1)[1]
+
+
 def test_repl_plan_mode_is_on_by_default_and_can_be_explicitly_disabled(
     tmp_path,
     monkeypatch,

@@ -258,7 +258,7 @@ def repl(
     )
     console.print(
         f"会话：{session_id}（{session_state}）。Plan Mode 已开启。输入 /help、"
-        "/session、/memory、"
+        "/status、/session、/memory、"
         "/permissions、/exit、"
         "/quit、/audit、/approve <编辑确认 ID> 或 "
         "/approve-command <命令确认 ID>。"
@@ -290,6 +290,18 @@ def repl(
 
         if prompt == "/session":
             console.print(f"当前会话：{session_id} | 对话消息：{len(history)}")
+            continue
+
+        if prompt == "/status":
+            console.print(
+                _render_repl_status(
+                    provider=provider,
+                    session_id=session_id,
+                    history=history,
+                    plan_mode=plan_mode,
+                    todo_store=todo_store,
+                )
+            )
             continue
 
         if prompt in {"/sessions", "/session list"}:
@@ -485,8 +497,8 @@ def _handle_todo_command(store: TodoStore, prompt: str) -> str:
             f"{item.id} | {item.status} | {item.text}" for item in items
         ) or "当前项目没有 Todo。"
 
-    if len(parts) == 3 and parts[1] == "add":
-        item = store.add(parts[2])
+    if prompt.startswith("/todo add "):
+        item = store.add(prompt.removeprefix("/todo add "))
         return f"已添加 Todo：{item.id} | {item.status}"
 
     if len(parts) == 4 and parts[1] == "set":
@@ -649,6 +661,7 @@ def _render_repl_help() -> str:
         (
             "/help：显示帮助。",
             "/clear：新建空会话，不删除历史会话。",
+            "/status：显示当前 Provider、会话、计划和 Todo 状态。",
             "/session：显示当前会话。",
             "/session list：列出可恢复会话（/sessions 为兼容别名）。",
             "/memory：查看；/memory add <文本>：保存；/memory remove <ID>：删除。",
@@ -661,6 +674,35 @@ def _render_repl_help() -> str:
             "/audit：显示最小编辑与命令审计。",
             "/approve <ID>、/approve-command <ID>：确认已预览操作。",
             "/exit、/quit：退出 REPL。",
+        )
+    )
+
+
+def _render_repl_status(
+    *,
+    provider: str,
+    session_id: str,
+    history: tuple[Message, ...],
+    plan_mode: PlanMode,
+    todo_store: TodoStore,
+) -> str:
+    """以不含消息正文的方式呈现当前 REPL 状态。"""
+    todos = todo_store.list_items()
+    counts = {status: 0 for status in TodoStatus}
+
+    for item in todos:
+        counts[item.status] += 1
+
+    return "\n".join(
+        (
+            f"Provider：{provider}",
+            f"会话：{session_id} | 对话消息：{len(history)}",
+            plan_mode.render_status(),
+            "Todo："
+            f"pending={counts[TodoStatus.PENDING]} | "
+            f"in_progress={counts[TodoStatus.IN_PROGRESS]} | "
+            f"completed={counts[TodoStatus.COMPLETED]} | "
+            f"blocked={counts[TodoStatus.BLOCKED]}",
         )
     )
 
