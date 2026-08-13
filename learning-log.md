@@ -169,3 +169,11 @@
 - `/plan` 暂不提供空壳实现，将在阶段 8 与真正限制写入能力的 Plan Mode 一起接入。
 - 验证结果：Python 3.12.13 环境下 88 项测试通过；`ruff check .` 与 `git diff --check` 通过。
 - 关键理解：Slash Command 是 REPL 的控制面，必须与普通模型提示词分流；尤其是“清空”应有明确的数据语义，不能误导用户为删除了可恢复会话。
+
+### 阶段 7.2：PreToolUse / PostToolUse Hooks
+
+- 新增独立 Hook 协议：`PreToolUse` 可允许或拒绝某次工具调用，`PostToolUse` 只观察执行结果，不能回写或改变已完成操作。
+- Agent 在调用工具前按顺序执行前置 Hook；拒绝结果会回填模型并通知后置 Hook。Hook 异常、错误返回类型与后置 Hook 异常均被隔离，不会中断会话。
+- 后置 Hook 最多收到 512 个字符的工具结果摘要，避免 Hook 接口成为绕过工具输出限制的通道。
+- 验证结果：Python 3.12.13 环境下 90 项测试通过；`ruff check .` 与 `git diff --check` 通过。
+- 关键理解：Hook 是策略扩展点而非另一个 Agent Loop。它的拒绝能力必须发生在工具执行之前，而其自身失败必须被视为非关键故障并与主会话隔离。

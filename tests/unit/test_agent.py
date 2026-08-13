@@ -3,6 +3,7 @@
 import pytest
 
 from agent_code.agent import Agent
+from agent_code.hooks import PostToolUseEvent, PreToolUseDecision, PreToolUseEvent
 from agent_code.models import Message, ModelResponse, ToolCall
 from agent_code.providers.mock import MockProvider
 from agent_code.tools.echo import EchoTool
@@ -119,3 +120,68 @@ def test_agent_sends_project_memory_without_storing_it_in_history() -> None:
         Message(role="user", content="新问题"),
         Message(role="assistant", content="收到。"),
     )
+
+
+def test_pre_tool_hook_can_deny_tool_and_post_hook_observes_denial() -> None:
+    """PreToolUse 拒绝应阻止执行，PostToolUse 仍可观察最小结果。"""
+    tool_call = ToolCall(id="call-1", name="echo", arguments={"text": "不应执行"})
+    provider = MockProvider(
+        responses=[
+            ModelResponse(tool_calls=(tool_call,)),
+            ModelResponse(text="已处理。"),
+        ]
+    )
+    post_events: list[PostToolUseEvent] = []
+
+    class DenyHook:
+        def before_tool_use(self, event: PreToolUseEvent) -> PreToolUseDecision:
+            assert event.tool_call == tool_call
+            return PreToolUseDecision(allow=False, reason="需要人工复核")
+
+    class ObserveHook:
+        def after_tool_use(self, event: PostToolUseEvent) -> None:
+            post_events.append(event)
+
+    agent = Agent(
+        provider=provider,
+        tools=[EchoTool()],
+        pre_tool_use_hooks=[DenyHook()],
+        post_tool_use_hooks=[ObserveHook()],
+    )
+
+    agent.run("调用工具")
+
+    assert "需要人工复核" in provider.requests[1][-1].content
+    assert post_events == [
+        PostToolUseEvent(
+            tool_call=tool_call,
+            succeeded=False,
+            result_summary="工具调用已被 PreToolUse Hook 拒绝：需要人工复核",
+        )
+    ]
+
+
+def test_hook_exceptions_do_not_break_tool_loop() -> None:
+    """非关键 Hook 异常不能阻止工具执行或后续模型回答。"""
+    tool_call = ToolCall(id="call-1", name="echo", arguments={"text": "正常结果"})
+    provider = MockProvider(
+        responses=[ModelResponse(tool_calls=(tool_call,)), ModelResponse(text="完成。")]
+    )
+
+    class BrokenPreHook:
+        def before_tool_use(self, event: PreToolUseEvent) -> PreToolUseDecision:
+            raise RuntimeError("pre hook failed")
+
+    class BrokenPostHook:
+        def after_tool_use(self, event: PostToolUseEvent) -> None:
+            raise RuntimeError("post hook failed")
+
+    agent = Agent(
+        provider=provider,
+        tools=[EchoTool()],
+        pre_tool_use_hooks=[BrokenPreHook()],
+        post_tool_use_hooks=[BrokenPostHook()],
+    )
+
+    assert agent.run("调用工具").text == "完成。"
+    assert provider.requests[1][-1].content == "正常结果"

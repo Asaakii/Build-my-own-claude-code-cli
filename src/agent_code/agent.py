@@ -3,6 +3,13 @@
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
+from agent_code.hooks import (
+    PostToolUseEvent,
+    PostToolUseHook,
+    PreToolUseDecision,
+    PreToolUseEvent,
+    PreToolUseHook,
+)
 from agent_code.models import Message, ToolCall
 from agent_code.providers.base import Provider
 from agent_code.tools.base import Tool
@@ -23,6 +30,8 @@ class Agent:
         self,
         provider: Provider,
         tools: Iterable[Tool],
+        pre_tool_use_hooks: Iterable[PreToolUseHook] = (),
+        post_tool_use_hooks: Iterable[PostToolUseHook] = (),
         max_turns: int = 10,
     ) -> None:
         if max_turns <= 0:
@@ -30,6 +39,8 @@ class Agent:
 
         self._provider = provider
         self._tools = {tool.name: tool for tool in tools}
+        self._pre_tool_use_hooks = tuple(pre_tool_use_hooks)
+        self._post_tool_use_hooks = tuple(post_tool_use_hooks)
         self._max_turns = max_turns
 
     def run(
@@ -86,12 +97,54 @@ class Agent:
 
     def _execute_tool(self, tool_call: ToolCall) -> str:
         """执行单个工具调用，并将失败转为可供模型处理的结果。"""
+        for hook in self._pre_tool_use_hooks:
+            try:
+                decision = hook.before_tool_use(PreToolUseEvent(tool_call=tool_call))
+            except Exception:
+                continue
+
+            if not isinstance(decision, PreToolUseDecision):
+                continue
+
+            if not decision.allow:
+                reason = decision.reason or "未提供原因"
+                result = f"工具调用已被 PreToolUse Hook 拒绝：{reason}"
+                self._notify_post_tool_use(tool_call, succeeded=False, result=result)
+                return result
+
         tool = self._tools.get(tool_call.name)
 
         if tool is None:
-            return f"工具调用失败：未找到工具 {tool_call.name!r}。"
+            result = f"工具调用失败：未找到工具 {tool_call.name!r}。"
+            self._notify_post_tool_use(tool_call, succeeded=False, result=result)
+            return result
 
         try:
-            return tool.run(tool_call.arguments)
+            result = tool.run(tool_call.arguments)
         except Exception as error:
-            return f"工具调用失败：{error}"
+            result = f"工具调用失败：{error}"
+            self._notify_post_tool_use(tool_call, succeeded=False, result=result)
+            return result
+
+        self._notify_post_tool_use(tool_call, succeeded=True, result=result)
+        return result
+
+    def _notify_post_tool_use(
+        self,
+        tool_call: ToolCall,
+        *,
+        succeeded: bool,
+        result: str,
+    ) -> None:
+        """隔离后置 Hook 失败，并限制其收到的工具结果长度。"""
+        event = PostToolUseEvent(
+            tool_call=tool_call,
+            succeeded=succeeded,
+            result_summary=result[:512],
+        )
+
+        for hook in self._post_tool_use_hooks:
+            try:
+                hook.after_tool_use(event)
+            except Exception:
+                continue
